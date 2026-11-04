@@ -68,6 +68,20 @@ source ~/.bashrc
 
 ---
 
+> [!WARNING]
+> ### Do Not Manually Update the OpenCode Binary (`v2.x` Incompatibility)
+> 
+> Do **not** run `npm update -g opencode`, `npm install -g opencode`, or manually replace `~/.local/bin/opencode-bin` with newer upstream releases (such as `v2.2.5+`).
+> 
+> **Why?**
+> - **Client-Server Daemon Collision**: OpenCode v2.0+ decoupled into a client-server model where the CLI spawns a child background daemon via `execve(process.execPath, ["serve"])`.
+> - **Android Bionic Linker Crash (Exit Code 127)**: In Termux, child processes spawned via `execve` bypass the parent shell wrapper (`grun`). The Android kernel rejects the binary because the standard glibc dynamic linker (`/lib/ld-linux-aarch64.so.1`) does not exist in Android's root filesystem, causing the server process to immediately crash with exit code `127`.
+> - **Bun Asset Trailer Corruption (Exit Code 139)**: Attempting to modify the binary using `patchelf --set-interpreter` corrupts Bun's embedded executable trailer, leading to an immediate `Segmentation fault (core dumped)`.
+> 
+> The bundled OpenCode **v1.19.5** build runs entirely in-process under `glibc-runner` (`grun`), ensuring maximum performance, zero sub-process crashes, and seamless proxy routing. Only upgrade OpenCode if you are running inside a full PRoot Linux distribution (e.g., Debian/Ubuntu PRoot) where `/lib` is natively mounted.
+
+---
+
 ## Usage
 
 ### 1. Launching OpenCode
