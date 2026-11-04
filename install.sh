@@ -269,22 +269,27 @@ start_proxy() {
     fi
 }
 
-stop_proxy() {
-    local pid
-    pid=$(get_pid 2>/dev/null) || true
-    if [ -n "$pid" ]; then
-        echo "[*] Stopping OpenCode Proxy (PID: $pid)..."
-        kill "$pid" 2>/dev/null || true
-        sleep 1
-        kill -9 "$pid" 2>/dev/null || true
-        pkill -9 -f "$BIN" 2>/dev/null || true
-        rm -f "$PID_FILE"
-        echo "[+] Proxy stopped."
-    else
-        pkill -9 -f "$BIN" 2>/dev/null || true
-        rm -f "$PID_FILE"
-        echo "[*] Proxy is not running."
+kill_all_proxies() {
+    echo "[*] Forcefully terminating all proxy engines, daemons, and port listeners..."
+    pkill -9 -f "opencode2api" 2>/dev/null || true
+    pkill -9 -f "proxy.py" 2>/dev/null || true
+    pkill -9 -f "openrouter-bridge" 2>/dev/null || true
+    pkill -9 -f "bridge.py" 2>/dev/null || true
+    pkill -9 -f "daemon_spawn.py" 2>/dev/null || true
+
+    local port_pids
+    port_pids=$(lsof -ti :8080,8081,8085 2>/dev/null || fuser 8080/tcp 8081/tcp 8085/tcp 2>/dev/null || true)
+    if [ -n "$port_pids" ]; then
+        kill -9 $port_pids 2>/dev/null || true
     fi
+
+    rm -f "$PID_FILE" "$HOME/.opencode-proxy/proxy.pid" "$HOME/.config/openrouter-bridge/bridge.pid" "$HOME/.local/share/openrouter-bridge/bridge.pid"
+    sleep 0.5
+    echo "[+] All proxy processes and port bindings have been completely terminated."
+}
+
+stop_proxy() {
+    kill_all_proxies
 }
 
 status_proxy() {
@@ -343,14 +348,15 @@ show_logs() {
 }
 
 case "$1" in
-    start)   start_proxy ;;
-    stop)    stop_proxy ;;
-    restart) stop_proxy; sleep 1; start_proxy ;;
-    status)  status_proxy ;;
-    test)    test_chat "$2" ;;
-    logs)    show_logs ;;
+    start)          start_proxy ;;
+    stop)           stop_proxy ;;
+    kill|kill-all)  kill_all_proxies ;;
+    restart)        kill_all_proxies; sleep 1; start_proxy ;;
+    status)         status_proxy ;;
+    test)           test_chat "$2" ;;
+    logs)           show_logs ;;
     *)
-        echo "Usage: opencode-proxy {start|stop|restart|status|test [model]|logs}"
+        echo "Usage: opencode-proxy {start|stop|kill|restart|status|test [model]|logs}"
         exit 1
         ;;
 esac
@@ -1030,6 +1036,11 @@ fi
 if [ "$1" = "uninstall" ] || [ "$1" = "--uninstall" ]; then
     echo -e "${YELLOW}[*] Launching OpenCode uninstaller...${NC}"
     curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall.sh | bash
+    exit 0
+fi
+
+if [ "$1" = "kill" ] || [ "$1" = "--kill" ] || [ "$1" = "kill-proxy" ]; then
+    "$PROXY_CLI" kill
     exit 0
 fi
 

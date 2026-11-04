@@ -168,7 +168,8 @@ Manage the local proxy service with `opencode-proxy`:
 ```bash
 opencode-proxy start     # Start daemon
 opencode-proxy stop      # Stop daemon
-opencode-proxy restart   # Restart daemon
+opencode-proxy kill      # Forcefully terminate all proxy engines and port listeners
+opencode-proxy restart   # Restart daemon cleanly
 opencode-proxy status    # Show PID, WARP status, active models
 opencode-proxy test      # Send test request to DeepSeek V4.1
 opencode-proxy logs      # View last 35 lines of proxy log

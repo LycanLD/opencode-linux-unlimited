@@ -5,6 +5,12 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-11-04
+
+### Added
+- **Global Proxy Purge Subsystem (`opencode-proxy kill` / `opencode kill-proxy`)**:
+  - Adds dedicated kill subcommands to forcefully kill all proxy engines (`opencode2api`, `proxy.py`, `bridge.py`, `daemon_spawn.py`), clear any processes holding ports 8080/8081/8085 via `lsof`/`fuser`, and delete all stale PID files.
+
 ## [2.0.3] - 2026-11-04
 
 ### Fixed
