@@ -23,11 +23,15 @@ fi
 # 1. Dependency Verification & Installation
 echo "[*] Checking prerequisite packages..."
 NEEDED_PKGS=()
-for pkg in curl jq proot termux-tools python; do
-    if ! command -v "$pkg" >/dev/null 2>&1; then
-        NEEDED_PKGS+=("$pkg")
+for cmd in curl jq proot python; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        NEEDED_PKGS+=("$cmd")
     fi
 done
+
+if ! command -v termux-open >/dev/null 2>&1 && ! command -v termux-reload-settings >/dev/null 2>&1; then
+    NEEDED_PKGS+=("termux-tools")
+fi
 
 if [ ${#NEEDED_PKGS[@]} -gt 0 ]; then
     echo "[*] Installing missing base utilities: ${NEEDED_PKGS[*]}"
@@ -153,7 +157,7 @@ cat << 'EOF' > "$INSTALL_DIR/config.json"
   "warp": {
     "enabled": true,
     "pool_size": 6,
-    "stack": "auto",
+    "stack": "dual",
     "source_ipv6": ""
   },
   "proxies": [
