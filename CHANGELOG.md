@@ -5,6 +5,17 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-11-04
+
+### Fixed
+- **Self-Healing Glibc Repository Provisioning**:
+  - Automatically provisions `$PREFIX/etc/apt/sources.list.d/glibc.list` pointing directly to Cloudflare and fallback Termux glibc mirrors if `glibc-repo` is not indexed by local apt caches.
+  - Resolves `Unable to locate package glibc-repo` failure during automated dependency installation on fresh or un-updated Termux installations.
+- **Legacy Stub Collision Resolution**:
+  - Automatically removes obsolete or conflicting wrappers at `$PREFIX/bin/opencode` (such as legacy `opencode-native-termux` stubs) and establishes a direct symlink to the multi-mode launcher for global terminal execution regardless of PATH precedence.
+- **Diagnostics Doctor Update**:
+  - Updated `opencode doctor` glibc check to provide instant 1-line self-healing recovery commands.
+
 ## [2.0.0] - 2026-11-04
 
 ### Added

@@ -29,14 +29,46 @@ for pkg in curl jq proot termux-tools python; do
     fi
 done
 
-if ! command -v grun >/dev/null 2>&1; then
-    NEEDED_PKGS+=("glibc-repo" "glibc-runner")
+if [ ${#NEEDED_PKGS[@]} -gt 0 ]; then
+    echo "[*] Installing missing base utilities: ${NEEDED_PKGS[*]}"
+    pkg update -y || apt-get update -y || true
+    pkg install -y "${NEEDED_PKGS[@]}" || apt-get install -y --no-install-recommends "${NEEDED_PKGS[@]}" || true
 fi
 
-if [ ${#NEEDED_PKGS[@]} -gt 0 ]; then
-    echo "[*] Installing missing packages: ${NEEDED_PKGS[*]}"
-    pkg update -y
-    pkg install -y "${NEEDED_PKGS[@]}"
+# 1.1 Self-healing Termux glibc runtime environment setup
+echo "[*] Verifying Termux glibc runtime environment..."
+if ! command -v grun >/dev/null 2>&1 || [ ! -f "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ]; then
+    echo "[*] Initializing Termux glibc repository configuration..."
+    mkdir -p "$PREFIX/etc/apt/sources.list.d"
+    GLIBC_SOURCE_FILE="$PREFIX/etc/apt/sources.list.d/glibc.list"
+
+    if [ ! -f "$GLIBC_SOURCE_FILE" ] || ! grep -q "termux-glibc" "$GLIBC_SOURCE_FILE" 2>/dev/null; then
+        cat << 'EOF' > "$GLIBC_SOURCE_FILE"
+# The glibc termux repository, with cloudflare cache
+deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable
+# The glibc termux repository, fallback mirror
+deb https://packages.termux.dev/apt/termux-glibc/ glibc stable
+EOF
+    fi
+
+    echo "[*] Refreshing package indexes..."
+    apt-get update -y -o Acquire::Retries=3 || pkg update -y || true
+
+    echo "[*] Installing glibc-runner..."
+    if ! pkg install -y glibc-runner 2>/dev/null; then
+        echo "[*] Retrying glibc-runner installation via apt-get..."
+        apt-get install -y --no-install-recommends glibc-repo glibc-runner || true
+    fi
+
+    if ! command -v grun >/dev/null 2>&1; then
+        echo -e "${RED}[!] Error: Failed to setup glibc-runner automatically.${NC}"
+        echo -e "${YELLOW}Please run manually:${NC}"
+        echo "  mkdir -p \$PREFIX/etc/apt/sources.list.d && echo \"deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable\" > \$PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner"
+        exit 1
+    fi
+    echo -e "${GREEN}[+] glibc-runner successfully configured.${NC}"
+else
+    echo -e "${GREEN}[+] glibc-runner is already installed and verified.${NC}"
 fi
 
 INSTALL_DIR="$HOME/.opencode-proxy"
@@ -805,7 +837,7 @@ run_doctor() {
     if command -v grun >/dev/null 2>&1; then
         echo -e "${GREEN}OK${NC}"
     else
-        echo -e "${RED}MISSING (run: pkg install -y glibc-runner)${NC}"
+        echo -e "${RED}MISSING (Fix: echo 'deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable' > \$PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner)${NC}"
         issues=$((issues + 1))
     fi
 
@@ -1021,6 +1053,17 @@ fi
 exec "$GRUN" "$OPENCODE_BIN" "${PASSTHROUGH_ARGS[@]}"
 EOF
 chmod +x "$LOCAL_BIN/opencode"
+
+# Clean legacy conflicting wrappers in $PREFIX/bin or system paths
+if [ -f "$PREFIX/bin/opencode" ] || [ -L "$PREFIX/bin/opencode" ]; then
+    if [ "$(realpath "$PREFIX/bin/opencode" 2>/dev/null)" != "$LOCAL_BIN/opencode" ]; then
+        echo "[*] Cleaning legacy conflicting wrapper at $PREFIX/bin/opencode..."
+        rm -f "$PREFIX/bin/opencode" 2>/dev/null || true
+    fi
+fi
+
+# Ensure global PATH execution by symlinking to $PREFIX/bin/opencode
+ln -sf "$LOCAL_BIN/opencode" "$PREFIX/bin/opencode" 2>/dev/null || true
 
 # 11. Create OpenCode CLI configuration profile
 if [ ! -f "$CONFIG_DIR/opencode.jsonc" ]; then

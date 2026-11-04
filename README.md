@@ -225,10 +225,10 @@ Example output:
    echo "nameserver 8.8.8.8" >> /data/data/com.termux/files/usr/etc/resolv.conf
    ```
 
-2. **Glibc Interpreter Missing**:
-   If you receive an error about `ld-linux-aarch64.so.1`, ensure `glibc-runner` is installed:
+2. **Glibc Interpreter Missing or `Unable to locate package glibc-repo`**:
+   If Termux mirrors fail to locate `glibc-repo` or report missing `ld-linux-aarch64.so.1`, initialize the glibc repository list directly and install `glibc-runner`:
    ```bash
-   pkg install -y glibc-repo glibc-runner
+   mkdir -p $PREFIX/etc/apt/sources.list.d && echo "deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable" > $PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner
    ```
 
 ---
