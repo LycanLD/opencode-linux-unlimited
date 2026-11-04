@@ -1073,17 +1073,19 @@ start_proxy_if_needed() {
         echo -e "${YELLOW}[*] Starting OpenCode Unlimited Proxy (Port 8080)...${NC}"
         "$PROXY_CLI" start || true
 
-        local max_wait=25
+        local max_wait=45
         local waited=0
         while [ $waited -lt $max_wait ]; do
             if curl -s --max-time 1 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
-                echo -e "${GREEN}[+] Unlimited Proxy ready.${NC}"
+                echo -e "\r${GREEN}[+] Unlimited Proxy ready.                                  ${NC}"
                 return 0
             fi
             sleep 1
             waited=$((waited + 1))
+            echo -ne "\r${CYAN}[*] Waiting for proxy and WARP egress initialization (${waited}/${max_wait}s)...${NC}"
         done
-        echo -e "${RED}[-] Warning: Proxy on port 8080 did not report ready within 25s.${NC}"
+        echo ""
+        echo -e "${RED}[-] Warning: Proxy on port 8080 did not report ready within ${max_wait}s.${NC}"
         echo -e "${YELLOW}[*] Diagnostic proxy logs (last 8 lines):${NC}"
         "$PROXY_CLI" logs 2>/dev/null | tail -n 8 || true
         echo -e "${RED}[!] Error: Unlimited Proxy failed to start on port 8080. Cannot proceed to OpenCode without working backend.${NC}"
