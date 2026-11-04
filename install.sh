@@ -71,6 +71,16 @@ else
     echo -e "${GREEN}[+] glibc-runner is already installed and verified.${NC}"
 fi
 
+# 1.2 Termux DNS resolver verification
+if [ ! -s "$PREFIX/etc/resolv.conf" ]; then
+    echo "[*] Initializing fallback DNS nameservers in $PREFIX/etc/resolv.conf..."
+    cat << 'EOF' > "$PREFIX/etc/resolv.conf"
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+nameserver 1.0.0.1
+EOF
+fi
+
 INSTALL_DIR="$HOME/.opencode-proxy"
 BIN_DIR="$INSTALL_DIR/bin"
 LOCAL_BIN="$HOME/.local/bin"
@@ -226,7 +236,11 @@ start_proxy() {
         return 0
     fi
     echo "[*] Starting OpenCode Proxy daemon on 127.0.0.1:8080..."
-    python3 "$SPAWNER" "$PID_FILE" "$LOG_FILE" "$BIN" -config "$CONFIG"
+    local runner=()
+    if command -v termux-chroot >/dev/null 2>&1; then
+        runner=("termux-chroot")
+    fi
+    python3 "$SPAWNER" "$PID_FILE" "$LOG_FILE" "${runner[@]}" "$BIN" -config "$CONFIG"
     sleep 2
     if get_pid >/dev/null 2>&1; then
         echo "[+] OpenCode Proxy started successfully (PID: $(get_pid))"
@@ -922,6 +936,7 @@ start_proxy_if_needed() {
             waited=$((waited + 1))
         done
         echo -e "${RED}[-] Warning: Proxy on port 8080 did not report ready within 15s.${NC}"
+        echo -e "${YELLOW}[!] If models fail with ECONNREFUSED, run: opencode-proxy status / opencode-proxy logs${NC}"
     fi
 }
 

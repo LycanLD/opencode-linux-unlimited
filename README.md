@@ -231,6 +231,17 @@ Example output:
    mkdir -p $PREFIX/etc/apt/sources.list.d && echo "deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable" > $PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner
    ```
 
+3. **Cannot Connect to API (`ECONNREFUSED`)**:
+   If OpenCode reports `ECONNREFUSED` when sending prompts, the local unlimited proxy daemon on port 8080 is stopped or DNS resolution failed:
+   ```bash
+   # Ensure DNS nameservers exist
+   echo "nameserver 1.1.1.1" > /data/data/com.termux/files/usr/etc/resolv.conf
+   # Restart proxy daemon
+   opencode-proxy restart
+   # Verify health status
+   opencode-proxy status
+   ```
+
 ---
 
 ## File Structure

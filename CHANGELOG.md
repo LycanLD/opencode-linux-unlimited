@@ -5,6 +5,15 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-11-04
+
+### Fixed
+- **DNS Resolver Auto-Provisioning & `termux-chroot` Daemon Binding**:
+  - Automatically provisions fallback nameservers (`1.1.1.1`, `8.8.8.8`) into `$PREFIX/etc/resolv.conf`.
+  - Executes `opencode2api` proxy engine under `termux-chroot` (when available) to ensure Go's pure-Go DNS resolver correctly discovers `/etc/resolv.conf` on Android.
+  - Eliminates `[::1]:53 connection refused` lookup failures during Cloudflare WARP initialization, permanently preventing `ECONNREFUSED` connection crashes in OpenCode TUI.
+  - Added self-healing recovery hints and documentation for `ECONNREFUSED` in `README.md` and launcher diagnostics.
+
 ## [2.0.1] - 2026-11-04
 
 ### Fixed
