@@ -943,7 +943,7 @@ start_proxy_if_needed() {
         echo -e "${YELLOW}[*] Starting OpenCode Unlimited Proxy (Port 8080)...${NC}"
         "$PROXY_CLI" start || true
 
-        local max_wait=15
+        local max_wait=25
         local waited=0
         while [ $waited -lt $max_wait ]; do
             if curl -s --max-time 1 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
