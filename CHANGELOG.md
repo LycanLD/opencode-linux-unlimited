@@ -5,6 +5,16 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-11-04
+
+### Fixed
+- **Dual-Stack WARP Auto-Detection (`stack: "auto"`)**:
+  - Upgraded WARP egress stack from hardcoded `"ipv6"` to `"auto"` in default configuration, enabling automatic IPv4 fallback on mobile data networks (4G/LTE/Jio/Telkomsel) that do not support IPv6 routing.
+- **Conflicting Proxy Process Termination**:
+  - Automatically terminates orphan or conflicting proxy processes holding port 8080 or 8081 before starting the gateway daemon.
+- **Interactive Diagnostics in Launcher**:
+  - Replaced silent startup redirects with real-time logging and automatic log dumps if the proxy daemon does not report ready within 15 seconds.
+
 ## [2.0.2] - 2026-11-04
 
 ### Added

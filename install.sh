@@ -153,7 +153,7 @@ cat << 'EOF' > "$INSTALL_DIR/config.json"
   "warp": {
     "enabled": true,
     "pool_size": 6,
-    "stack": "ipv6",
+    "stack": "auto",
     "source_ipv6": ""
   },
   "proxies": [
@@ -235,6 +235,20 @@ start_proxy() {
         echo "[*] OpenCode Proxy is already running (PID: $(get_pid))"
         return 0
     fi
+
+    # Clear conflicting proxies on port 8080/8081
+    pkill -9 -f "proxy.py" 2>/dev/null || true
+    pkill -9 -f "$BIN" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    sleep 0.5
+
+    # Ensure nameserver configuration exists
+    if [ ! -s "$PREFIX/etc/resolv.conf" ]; then
+        mkdir -p "$PREFIX/etc"
+        echo "nameserver 1.1.1.1" > "$PREFIX/etc/resolv.conf"
+        echo "nameserver 8.8.8.8" >> "$PREFIX/etc/resolv.conf"
+    fi
+
     echo "[*] Starting OpenCode Proxy daemon on 127.0.0.1:8080..."
     local runner=()
     if command -v termux-chroot >/dev/null 2>&1; then
@@ -246,6 +260,7 @@ start_proxy() {
         echo "[+] OpenCode Proxy started successfully (PID: $(get_pid))"
     else
         echo "[-] Failed to start OpenCode Proxy. Check logs at: $LOG_FILE"
+        [ -f "$LOG_FILE" ] && tail -n 8 "$LOG_FILE"
         exit 1
     fi
 }
@@ -258,9 +273,12 @@ stop_proxy() {
         kill "$pid" 2>/dev/null || true
         sleep 1
         kill -9 "$pid" 2>/dev/null || true
+        pkill -9 -f "$BIN" 2>/dev/null || true
         rm -f "$PID_FILE"
         echo "[+] Proxy stopped."
     else
+        pkill -9 -f "$BIN" 2>/dev/null || true
+        rm -f "$PID_FILE"
         echo "[*] Proxy is not running."
     fi
 }
@@ -923,7 +941,7 @@ exit(0 if target in data else 1)
 start_proxy_if_needed() {
     if ! curl -s --max-time 1 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
         echo -e "${YELLOW}[*] Starting OpenCode Unlimited Proxy (Port 8080)...${NC}"
-        "$PROXY_CLI" start >/dev/null 2>&1 || true
+        "$PROXY_CLI" start || true
 
         local max_wait=15
         local waited=0
@@ -936,7 +954,9 @@ start_proxy_if_needed() {
             waited=$((waited + 1))
         done
         echo -e "${RED}[-] Warning: Proxy on port 8080 did not report ready within 15s.${NC}"
-        echo -e "${YELLOW}[!] If models fail with ECONNREFUSED, run: opencode-proxy status / opencode-proxy logs${NC}"
+        echo -e "${YELLOW}[*] Diagnostic proxy logs (last 6 lines):${NC}"
+        "$PROXY_CLI" logs 2>/dev/null | tail -n 6 || true
+        echo -e "${CYAN}[!] Tip: Run 'opencode-proxy restart' or check network/DNS connectivity.${NC}"
     fi
 }
 
