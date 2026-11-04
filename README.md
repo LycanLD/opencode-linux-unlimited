@@ -1,327 +1,256 @@
-# OpenCode Termux Unlimited
+# opencode-termux-unlimited
 
-[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Termux%20ARM64-green.svg)](#requirements)
-[![Engine](https://img.shields.io/badge/engine-opencode2api%20v1.4.6-blue.svg)](https://github.com/jasonxu114514/opencode2api)
-[![OpenCode](https://img.shields.io/badge/opencode-v1.19.5-purple.svg)](https://opencode.ai)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-not%20required-brightgreen.svg)](#architectural-notes)
-
-Turnkey setup for running the OpenCode CLI natively on Android (Termux) backed by a rotating Cloudflare WARP egress pool. Eliminates the per-IP rate limits on the anonymous free tier without requiring root, containers, or external servers.
+Production-ready OpenCode CLI runtime environment for Android (Termux aarch64), featuring a multi-mode gateway architecture with unlimited free models, automated Cloudflare WARP egress pooling, and an integrated OpenRouter bridge.
 
 ---
 
-## Architecture
+## Architecture Overview
 
-```text
-┌────────────────────────────────────────────────────────┐
-│                      Android Device                    │
-│                                                        │
-│   OpenCode CLI (TUI / Agent)                           │
-│   └── Executed via glibc-runner (grun)                 │
-│             │                                          │
-│             ▼ HTTP (127.0.0.1:8080/v1)                 │
-│                                                        │
-│   opencode2api Gateway                                 │
-│   ├── Executed inside termux-chroot (DNS bridge)       │
-│   ├── Backgrounded via Python double-fork daemon       │
-│   ├── Client Fingerprinting:                           │
-│   │   ├── Versioned User-Agent                         │
-│   │   ├── Canonical descending session ID              │
-│   │   ├── Injected 'read' tool declaration             │
-│   │   └── Forced stream protocol                       │
-│   │                                                    │
-│   └── Userspace Cloudflare WARP IPv6 Pool              │
-│       ├── Dynamic multi-exit pool                      │
-│       └── Transparent egress rotation on HTTP 429/403  │
-└───────────────────────┬────────────────────────────────┘
-                        │
-                        ▼ Outbound WireGuard UDP (2408)
-            Cloudflare Edge Network
-                        │
-                        ▼ Rotated Egress /64 Block
-            OpenCode Free-Tier Inference
+```
+                          ┌──────────────────────────┐
+                          │   opencode (Launcher)    │
+                          │   Mode 1 / Mode 2 Selector│
+                          └─────────────┬────────────┘
+                                        │
+                 ┌──────────────────────┴──────────────────────┐
+                 │                                             │
+                 ▼                                             ▼
+       [Mode 1: Unlimited Proxy]                     [Mode 2: Dual Gateway]
+         127.0.0.1:8080                                127.0.0.1:8085
+    ┌───────────────────────────┐                 ┌───────────────────────────┐
+    │     opencode2api (Go)     │                 │   openrouter-bridge (Py)  │
+    │   Cloudflare WARP Pool    │                 │   Smart Egress Auto-Probe │
+    └─────────────┬─────────────┘                 └─────────────┬─────────────┘
+                  │                                             │
+                  ▼                                             ▼
+     Unlimited Free Model Pool                     OpenRouter Frontier APIs
+     • DeepSeek V4.1 Flash                         • Claude 3.7 Sonnet
+     • GLM 5.3 Flash (Reasoning Unlocked)          • GPT-4o / o3-mini
+     • Nemotron 3.5 Lightning / Super-VL           • DeepSeek R1 / V3
+     • Flint 40B, Big Pickle, Pulse                • Gemini 2.5 Pro
 ```
 
 ---
 
-## Upstream Credits
+## Features
 
-- [ebouther/opencode-unlimited-proxy](https://github.com/ebouther/opencode-unlimited-proxy): Reverse engineering of OpenCode free-tier request gates, session timestamp layouts, and the multi-egress rotation strategy.
-- [jasonxu114514/opencode2api](https://github.com/jasonxu114514/opencode2api): Go gateway engine implementing the OpenAI-compatible bridge and built-in WARP userspace egress manager.
-- [OpenCode](https://opencode.ai): Open-source terminal coding assistant.
-
----
-
-## Why Standard Setup Fails on Android (And How We Fix It)
-
-Upstream projects target standard Linux servers running Docker Compose. On Android Termux:
-
-1. **Docker is unavailable**: Standard Android kernels lack full cgroup and container namespaces for non-root users.
-   - *Fix*: We run the statically linked `opencode2api` ARM64 binary directly on Termux userspace.
-2. **Go DNS resolution failure (`[::1]:53 connection refused`)**:
-   - Go's pure net resolver expects `/etc/resolv.conf`. Android uses `netd` over IPC and has no `/etc/resolv.conf`, causing Go to query `localhost:53` and crash when contacting Cloudflare.
-   - *Fix*: We execute the engine through `termux-chroot` (PRoot), which transparently maps `$PREFIX/etc/resolv.conf` into `/etc/resolv.conf` with zero performance penalty.
-3. **OpenCode CLI glibc dependency**:
-   - OpenCode CLI is distributed as a Bun-compiled executable linked against glibc (`/lib/ld-linux-aarch64.so.1`), while Termux uses Android Bionic libc.
-   - *Fix*: Instead of installing a heavy 1GB+ Linux distro rootfs, we use Termux's native `glibc-runner` (`grun`). This allows running the official binary with near-zero overhead.
-4. **Process lifecycle preservation**:
-   - Background processes spawned directly from a Termux subshell terminate when the session closes.
-   - *Fix*: A lightweight Python double-fork spawner detaches standard file descriptors, assigns a clean session ID (`setsid`), and decouples the daemon from terminal hangup signals.
+- **Multi-Mode Interactive Launcher**:
+  - **Mode 1 (Unlimited Free Proxy)**: Zero-config access to unlimited free models via local Cloudflare WARP egress pool. No API key required.
+  - **Mode 2 (Dual Gateway)**: Runs both the Unlimited Proxy and the dedicated OpenRouter Bridge, allowing simultaneous usage of free models and frontier models (Claude 3.7 Sonnet, GPT-4o, DeepSeek R1/V3) with your own OpenRouter key.
+- **GLM 5.3 Reasoning Unlock**: Fixes an upstream OpenCode catalog whitelist bug via an automated 1:1 byte patch to `opencode-bin`, restoring full reasoning effort selection (`low`, `medium`, `high`, `max`) for `glm-5.3-flash-free`.
+- **WARP Pool Egress Scaling**: Configured with 6 Cloudflare WARP workers (`preload: 3`, `active: 3`, `standby: 3`) to prevent 429 rate limits under high concurrency.
+- **Integrated OpenRouter Autonomous Bridge**: Pure Python 3 standard library daemon with smart multi-egress probing (Wireproxy WARP -> Smart-Proxy -> Direct) and clean HTTP/1.1 SSE streaming.
+- **System Doctor & Self-Healing Diagnostics**: Built-in `opencode doctor` command that inspects binary architecture, daemon health, port availability, DNS latency, and configuration validity.
 
 ---
 
-## Verified Compatibility Matrix
+## Prerequisites
 
-Tested and verified on Android 12 through Android 15 (aarch64 / Termux v0.118+):
-
-| Component | Target Version | Status |
-|---|---|---|
-| Proxy Gateway | `opencode2api v1.4.6` | Verified functional |
-| Client CLI | `opencode-ai v1.19.5` | Verified functional via `grun` |
-| DNS Resolution | Android termux-chroot bridge | Verified (0ms lookup delay) |
-| Egress Failover | Cloudflare WARP IPv6 pool | Verified (automatic retry on 429) |
-| Terminal UI | OpenCode full interactive TUI | Verified |
+- **Device**: Android phone or tablet running Termux.
+- **Architecture**: `aarch64` / `arm64`. Check with `uname -m`.
+- **Packages**: `curl`, `jq`, `proot`, `termux-tools`, `python`, `glibc-repo`, `glibc-runner`. Installed automatically by the script.
 
 ---
 
-## Quick Start (One Command)
+## Quickstart Installation
 
-Run this single command inside Termux:
+Run the one-line installer inside Termux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
 ```
 
-The script is idempotent. It will:
-1. Install system prerequisites (`curl`, `jq`, `proot`, `termux-tools`, `python`, `glibc-runner`).
-2. Download and verify the `opencode2api` ARM64 binary.
-3. Deploy the double-fork background daemon manager.
-4. Configure the proxy with WARP IPv6 rotation (`free_only: true`).
-5. Download OpenCode CLI and configure the wrapper script.
-6. Generate `~/.config/opencode/opencode.jsonc` pre-linked to `http://127.0.0.1:8080/v1`.
-7. Start the daemon and verify connection health.
+Once installed, restart your shell or reload PATH:
 
-Once finished, launch OpenCode:
+```bash
+source ~/.bashrc
+```
+
+---
+
+## Usage
+
+### 1. Launching OpenCode
+
+Simply run:
 
 ```bash
 opencode
 ```
 
+When run interactively without flags, OpenCode prompts you to choose your operating mode:
+
+```text
+================================================================
+           OpenCode Termux Launcher - Select Mode               
+================================================================
+
+  [1] Unlimited Proxy Mode (Default / 100% Free)
+      • Runs standalone local proxy on 127.0.0.1:8080.
+      • Free unlimited models: DeepSeek V4.1 Flash, GLM 5.3 Flash,
+        Nemotron 3.5, Flint 40B, Big Pickle, Pulse.
+      • Zero API key required. WARP egress pool enabled.
+
+  [2] Dual Gateway Mode (Unlimited Free + OpenRouter)
+      • Runs Unlimited Proxy (8080) AND OpenRouter Bridge (8085).
+      • Unlocks frontier models alongside free models:
+        Claude 3.7 Sonnet, GPT-4o, DeepSeek R1/V3, Gemini 2.5 Pro.
+      • Requires your own OpenRouter API key.
+================================================================
+Select option [1/2] (Default is 1): 
+```
+
+### 2. Direct Mode Flags (Bypass Menu)
+
+To bypass the interactive menu in scripts or aliases:
+
+```bash
+# Run in Mode 1 directly
+opencode -1
+
+# Run in Mode 2 directly
+opencode -2
+
+# Pass arguments directly to OpenCode
+opencode -1 models
+opencode -2 -m anthropic/claude-3.7-sonnet
+```
+
+You can also export `OPENCODE_MODE=1` or `OPENCODE_MODE=2` in your `~/.bashrc` to set a permanent default.
+
 ---
 
-## Manual Step-by-Step Guide
+## Available Free Models (Mode 1)
 
-If you prefer building the setup manually:
+All models are served through the local proxy at `http://127.0.0.1:8080/v1`:
 
-### 1. Install Base Packages
+| Model ID | Provider Family | Context Window | Capabilities |
+| :--- | :--- | :--- | :--- |
+| `deepseek-v4.1-flash-free` | DeepSeek | 1,000,000 | Code generation, agent tasks, tools |
+| `glm-5.3-flash-free` | Zhipu AI | 1,000,000 | Reasoning effort (`low`, `med`, `high`, `max`), vision |
+| `nemotron-3.5-lightning-free` | NVIDIA | 262,144 | Fast instruction following, tool execution |
+| `nemotron-3.5-super-vl-free` | NVIDIA | 1,048,576 | Multimodal vision & document analysis |
+| `flint-40b-free` | Flint | 128,000 | Balanced reasoning and coding |
+| `big-pickle` | Pickle | 200,000 | Deliberate problem solving & planning |
+| `pulse-alpha-free` | Pulse | 1,048,576 | High-throughput agent execution |
+| `mimo-v2.6-flash-free` | Xiaomi | 262,144 | Low-latency drafting |
+| `beam-free` | Reflection | 1,048,576 | Multi-turn reasoning |
+| `crouton-alpha-free` | Crouton | 1,048,576 | Long-horizon context |
 
-```bash
-pkg update -y
-pkg install -y curl jq proot termux-tools python glibc-repo
-pkg install -y glibc-runner
-```
+### Adjusting GLM 5.3 Thinking / Effort
 
-### 2. Download and Extract Gateway Engine
+With our binary patch and config variants, you can adjust GLM 5.3 reasoning depth directly inside the OpenCode TUI:
+- Use the `/variants` slash command to pick `low`, `medium`, `high`, or `max`.
+- Or press `Tab` on the model statusline to cycle through effort levels.
 
-```bash
-mkdir -p ~/.opencode-proxy/bin ~/.local/bin ~/.config/opencode
-cd ~/.opencode-proxy
+---
 
-curl -sSL "https://github.com/jasonxu114514/opencode2api/releases/download/v1.4.6/opencode2api_v1.4.6_linux_arm64.tar.gz" -o engine.tar.gz
-tar -zxvf engine.tar.gz -C bin/ --strip-components=1 opencode2api_v1.4.6_linux_arm64/opencode2api
-chmod +x bin/opencode2api
-rm -f engine.tar.gz
-```
+## Daemon Management
 
-### 3. Deploy Gateway Configuration
+### Unlimited Proxy (Port 8080)
 
-Save to `~/.opencode-proxy/config.json`:
-
-```json
-{
-  "listen": "127.0.0.1:8080",
-  "server_keys": ["local-test-key"],
-  "anonymous": true,
-  "warp": {
-    "enabled": true,
-    "pool_size": 4,
-    "stack": "ipv6"
-  },
-  "proxies": ["direct"],
-  "upstream": {
-    "anonymous": "https://opencode.ai/inference"
-  },
-  "retry": {
-    "max_attempts": 6,
-    "timeout_seconds": 180
-  },
-  "models": {
-    "refresh_seconds": 300,
-    "free_only": true
-  },
-  "webui": {
-    "enabled": true,
-    "listen": "127.0.0.1:8081",
-    "username": "admin",
-    "password": "changeme-changeme"
-  }
-}
-```
-
-### 4. Create Daemon Controller
-
-Copy `install.sh`'s controller block to `~/.local/bin/opencode-proxy` and make it executable:
+Manage the local proxy service with `opencode-proxy`:
 
 ```bash
-chmod +x ~/.local/bin/opencode-proxy
+opencode-proxy start     # Start daemon
+opencode-proxy stop      # Stop daemon
+opencode-proxy restart   # Restart daemon
+opencode-proxy status    # Show PID, WARP status, active models
+opencode-proxy test      # Send test request to DeepSeek V4.1
+opencode-proxy logs      # View last 35 lines of proxy log
 ```
 
-Start the daemon:
+Web dashboard is accessible at `http://127.0.0.1:8081` (Default credentials: `admin` / `changeme-changeme`).
+
+### OpenRouter Bridge (Port 8085)
+
+Manage the OpenRouter bridge with `openrouter-bridge`:
 
 ```bash
-opencode-proxy start
-```
-
-Verify status:
-
-```bash
-opencode-proxy status
-```
-
-### 5. Install OpenCode CLI
-
-```bash
-curl -sSL "https://registry.npmjs.org/opencode-linux-arm64/-/opencode-linux-arm64-1.19.5.tgz" -o opencode.tgz
-tar -zxvf opencode.tgz -C ~/.local/bin/ --strip-components=2 package/bin/opencode
-mv ~/.local/bin/opencode ~/.local/bin/opencode-bin
-chmod +x ~/.local/bin/opencode-bin
-rm -f opencode.tgz
-```
-
-Create the `~/.local/bin/opencode` wrapper:
-
-```bash
-cat << 'EOF' > ~/.local/bin/opencode
-#!/data/data/com.termux/files/usr/bin/bash
-exec /data/data/com.termux/files/usr/bin/grun "$HOME/.local/bin/opencode-bin" "$@"
-EOF
-chmod +x ~/.local/bin/opencode
-```
-
-Make sure `export PATH="$HOME/.local/bin:$PATH"` is inside `~/.bashrc`.
-
-### 6. Configure OpenCode Profile
-
-Save to `~/.config/opencode/opencode.jsonc`:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "opencode-unlimited-proxy/deepseek-v4.1-flash-free",
-  "permission": {
-    "*": "allow",
-    "bash": "allow",
-    "read": "allow",
-    "write": "allow",
-    "edit": "allow",
-    "glob": "allow",
-    "grep": "allow",
-    "list": "allow",
-    "websearch": "allow"
-  },
-  "provider": {
-    "opencode-unlimited-proxy": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "opencode-unlimited-proxy",
-      "options": {
-        "baseURL": "http://127.0.0.1:8080/v1",
-        "apiKey": "local-test-key"
-      },
-      "models": {
-        "beam-free": {},
-        "big-pickle": {},
-        "crouton-alpha-free": {},
-        "deepseek-v4.1-flash-free": {},
-        "flint-40b-free": {},
-        "glm-5.3-flash-free": {},
-        "mimo-v2.6-flash-free": {},
-        "nemotron-3.5-lightning-free": {},
-        "nemotron-3.5-super-vl-free": {},
-        "pulse-alpha-free": {}
-      }
-    }
-  }
-}
+openrouter-bridge start     # Start bridge daemon
+openrouter-bridge stop      # Stop bridge daemon
+openrouter-bridge restart   # Restart bridge daemon
+openrouter-bridge status    # Show PID, active egress, upstream target
+openrouter-bridge test      # Test model completion via bridge
+openrouter-bridge logs      # View bridge access logs
 ```
 
 ---
 
-## Gateway Management CLI
+## Diagnostics & Troubleshooting
 
-Manage the background proxy service at any time:
+Run the built-in system doctor anytime to diagnose potential issues:
 
 ```bash
-# Check daemon state, active exits, and exposed model count
-opencode-proxy status
+opencode doctor
+```
 
-# Start service
-opencode-proxy start
+Example output:
 
-# Stop service
-opencode-proxy stop
+```text
+=== OpenCode Termux System Diagnostics (Doctor) ===
 
-# Restart service
-opencode-proxy restart
+[*] Checking system architecture... OK (aarch64)
+[*] Checking glibc-runner (grun)... OK
+[*] Checking OpenCode binary... FOUND
+[*] Checking GLM 5.3 reasoning patch... ACTIVE (Unlocked)
+[*] Checking Unlimited Proxy (127.0.0.1:8080)... RUNNING (WARP: ready, Models: 10)
+[*] Checking OpenRouter Bridge (127.0.0.1:8085)... RUNNING (Egress: direct)
+[*] Checking DNS resolution (1.1.1.1)... OK
+[*] Validating ~/.config/opencode/opencode.jsonc... VALID
 
-# Send a verified test request
-opencode-proxy test deepseek-v4.1-flash-free
+[✓] All core systems operational.
+```
 
-# Stream live access & rotation logs
-opencode-proxy logs
+### Common Fixes
+
+1. **DNS Resolution Hangs**:
+   If DNS fails when switching between Wi-Fi and mobile data, update your nameserver:
+   ```bash
+   echo "nameserver 1.1.1.1" > /data/data/com.termux/files/usr/etc/resolv.conf
+   echo "nameserver 8.8.8.8" >> /data/data/com.termux/files/usr/etc/resolv.conf
+   ```
+
+2. **Glibc Interpreter Missing**:
+   If you receive an error about `ld-linux-aarch64.so.1`, ensure `glibc-runner` is installed:
+   ```bash
+   pkg install -y glibc-repo glibc-runner
+   ```
+
+---
+
+## File Structure
+
+```text
+~/.local/bin/
+├── opencode           # Multi-mode launcher with interactive menu & doctor
+├── opencode-bin       # Patched OpenCode binary (v1.19.5 with GLM 5.3 unlock)
+├── opencode-proxy     # CLI manager for the unlimited proxy
+└── openrouter-bridge  # CLI manager for the OpenRouter bridge
+
+~/.local/share/openrouter-bridge/
+└── bridge.py          # Lightweight Python 3 stdlib bridge gateway
+
+~/.opencode-proxy/
+├── bin/opencode2api   # Compiled ARM64 proxy engine
+├── daemon_spawn.py    # Double-fork background spawner
+├── config.json        # Proxy configuration (WARP pool size 6)
+└── proxy.log          # Operational proxy logs
+
+~/.config/opencode/
+└── opencode.jsonc     # OpenCode models and provider configuration
 ```
 
 ---
 
-## Active Free Models
+## Credits
 
-The gateway exposes 10 verified free-tier models (filtered from OpenCode's 80 upstream catalog models to prevent 401 unauthorized errors on paid endpoints):
-
-| Model ID | Optimal Use Case | Context Window |
-|---|---|---|
-| `deepseek-v4.1-flash-free` | Algorithms, code generation, refactoring | 128K |
-| `big-pickle` | Multi-step reasoning and project planning | 200K |
-| `crouton-alpha-free` | Massive context processing, multimodal docs | 1M |
-| `nemotron-3.5-super-vl-free` | NVIDIA Vision-Language tasks | 1M |
-| `nemotron-3.5-lightning-free` | Low-latency terminal commands, quick scripts | 262K |
-| `glm-5.3-flash-free` | General knowledge queries | 128K |
-| `beam-free` | Step-by-step logic and calculations | 1M |
-| `mimo-v2.6-flash-free` | Compact quick assistant | 128K |
-| `flint-40b-free` | Open-weight foundation model | 128K |
-| `pulse-alpha-free` | Multimodal input tasks | 1M |
-
----
-
-## Connecting External Clients
-
-The gateway provides a standard OpenAI-compatible `/v1` endpoint. You can use it in other tools (Cline, LibreChat, Continue, Chatbox, or custom scripts):
-
-- **API Endpoint**: `http://127.0.0.1:8080/v1`
-- **API Key**: `local-test-key`
-- **Dashboard**: `http://127.0.0.1:8081` (default: `admin` / `changeme-changeme`)
-
----
-
-## Troubleshooting
-
-- **Port 8080 already in use**:
-  Check running processes with `lsof -i :8080` or `netstat -tlpn`. If an old instance is hanging, run `opencode-proxy stop` followed by `pkill -f opencode2api`.
-- **WARP initialization delay**:
-  On first start, Cloudflare WARP registration takes 3 to 7 seconds to negotiate keys and obtain IPv6 exit addresses. Check `opencode-proxy logs` to monitor egress assignment.
-- **Permission Denied on `/sdcard`**:
-  Run `termux-setup-storage` and grant Android storage permissions in the system dialog.
+- Maintained by [leangtg123-art](https://github.com/leangtg123-art).
+- Architectural design, reverse-engineering, and enhancements contributed by Discord user **leanianstudio**.
+- Powered by [OpenCode](https://opencode.ai) and `opencode2api`.
 
 ---
 
 ## License
 
-[MIT](LICENSE)
+This repository is licensed under the [MIT License](LICENSE).

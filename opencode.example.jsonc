@@ -21,16 +21,47 @@
         "apiKey": "local-test-key"
       },
       "models": {
-        "beam-free": {},
-        "big-pickle": {},
-        "crouton-alpha-free": {},
         "deepseek-v4.1-flash-free": {},
-        "flint-40b-free": {},
-        "glm-5.3-flash-free": {},
-        "mimo-v2.6-flash-free": {},
+        "glm-5.3-flash-free": {
+          "variants": {
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "medium": {
+              "reasoningEffort": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high"
+            },
+            "max": {
+              "reasoningEffort": "max"
+            }
+          }
+        },
         "nemotron-3.5-lightning-free": {},
         "nemotron-3.5-super-vl-free": {},
+        "flint-40b-free": {},
+        "big-pickle": {},
+        "crouton-alpha-free": {},
+        "beam-free": {},
+        "mimo-v2.6-flash-free": {},
         "pulse-alpha-free": {}
+      }
+    },
+    "openrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "openrouter",
+      "options": {
+        "baseURL": "http://127.0.0.1:8085/v1"
+      },
+      "models": {
+        "anthropic/claude-3.7-sonnet": {},
+        "anthropic/claude-3.5-sonnet": {},
+        "openai/gpt-4o": {},
+        "openai/o3-mini": {},
+        "deepseek/deepseek-chat": {},
+        "google/gemini-2.5-pro": {},
+        "meta-llama/llama-3.3-70b-instruct": {}
       }
     }
   }
