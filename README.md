@@ -191,6 +191,22 @@ openrouter-bridge logs      # View bridge access logs
 
 ---
 
+## Updating
+
+To pull the latest runtime fixes, proxy patches, and improvements directly from GitHub:
+
+```bash
+opencode update
+```
+
+Alternatively, re-run the one-line installer anytime (existing binary downloads and configuration settings are automatically preserved):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+```
+
+---
+
 ## Diagnostics & Troubleshooting
 
 Run the built-in system doctor anytime to diagnose potential issues:

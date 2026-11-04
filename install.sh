@@ -997,6 +997,12 @@ if [ "$1" = "doctor" ] || [ "$1" = "--doctor" ]; then
     run_doctor
 fi
 
+if [ "$1" = "update" ] || [ "$1" = "--update" ]; then
+    echo -e "${CYAN}[*] Fetching and applying latest OpenCode Termux Unlimited updates from GitHub...${NC}"
+    curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+    exit 0
+fi
+
 MODE=""
 PASSTHROUGH_ARGS=()
 
@@ -1162,3 +1168,4 @@ echo "[*] Initializing background gateway..."
 echo -e "\n${GREEN}${BOLD}[✓] Installation complete!${NC}"
 echo "Run 'opencode' to launch the interactive selector."
 echo "Run 'opencode doctor' to verify system health anytime."
+echo "Run 'opencode update' to pull the latest fixes and improvements."

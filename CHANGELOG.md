@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.2] - 2026-11-04
 
+### Added
+- **Integrated `opencode update` Command**:
+  - Allows users to seamlessly pull and apply the latest repository fixes and improvements with `opencode update`.
+
 ### Fixed
 - **DNS Resolver Auto-Provisioning & `termux-chroot` Daemon Binding**:
   - Automatically provisions fallback nameservers (`1.1.1.1`, `8.8.8.8`) into `$PREFIX/etc/resolv.conf`.
