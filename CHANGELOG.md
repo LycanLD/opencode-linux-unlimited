@@ -5,6 +5,19 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-11-04
+
+### Fixed
+- **Glibc Repository GPG Verification Bypass (`[trusted=yes]`)**:
+  - Adds `[trusted=yes]` to `sources.list.d/glibc.list` and installs `termux-keyring`, resolving `NO_PUBKEY 5A897D96E57CF20C` and apt repo disabling errors on devices with outdated keyrings.
+- **Root SSL CA Certificates for glibc (`ca-certificates-glibc`) & `SSL_CERT_FILE` Propagation**:
+  - Automatically installs `ca-certificates-glibc` alongside `glibc-runner` and links `$PREFIX/etc/tls/cert.pem` to glibc SSL paths.
+  - Exports `SSL_CERT_FILE` and `SSL_CERT_DIR` across `opencode-proxy`, `daemon_spawn.py`, and `opencode` launcher, fixing `tls: failed to verify certificate: x509: certificate signed by unknown authority` during Cloudflare WARP client registration.
+- **Corrupted SQLite Database Auto-Repair (`Database is not empty and has no session table`)**:
+  - Implements automatic integrity verification and backup-reset of corrupted `~/.local/share/opencode/opencode.db` upon launch or proxy kill.
+- **Zombie Proxy Detection and Guard**:
+  - Replaces naive PID presence check in `opencode-proxy` with active HTTP `/healthz` polling, purging dead or hanging proxy daemons automatically. Aborts cleanly before launching OpenCode if the backend proxy fails to initialize.
+
 ## [2.0.4] - 2026-11-04
 
 ### Added

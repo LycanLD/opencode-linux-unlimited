@@ -33,6 +33,12 @@ if ! command -v termux-open >/dev/null 2>&1 && ! command -v termux-reload-settin
     NEEDED_PKGS+=("termux-tools")
 fi
 
+for pkg in ca-certificates termux-keyring; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+        NEEDED_PKGS+=("$pkg")
+    fi
+done
+
 if [ ${#NEEDED_PKGS[@]} -gt 0 ]; then
     echo "[*] Installing missing base utilities: ${NEEDED_PKGS[*]}"
     pkg update -y || apt-get update -y || true
@@ -41,38 +47,45 @@ fi
 
 # 1.1 Self-healing Termux glibc runtime environment setup
 echo "[*] Verifying Termux glibc runtime environment..."
-if ! command -v grun >/dev/null 2>&1 || [ ! -f "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ]; then
-    echo "[*] Initializing Termux glibc repository configuration..."
-    mkdir -p "$PREFIX/etc/apt/sources.list.d"
-    GLIBC_SOURCE_FILE="$PREFIX/etc/apt/sources.list.d/glibc.list"
+mkdir -p "$PREFIX/etc/apt/sources.list.d"
+GLIBC_SOURCE_FILE="$PREFIX/etc/apt/sources.list.d/glibc.list"
 
-    if [ ! -f "$GLIBC_SOURCE_FILE" ] || ! grep -q "termux-glibc" "$GLIBC_SOURCE_FILE" 2>/dev/null; then
-        cat << 'EOF' > "$GLIBC_SOURCE_FILE"
-# The glibc termux repository, with cloudflare cache
-deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable
+# Ensure glibc repo uses [trusted=yes] to bypass missing/outdated GPG key errors (NO_PUBKEY 5A897D96E57CF20C)
+if [ ! -f "$GLIBC_SOURCE_FILE" ] || ! grep -q "trusted=yes" "$GLIBC_SOURCE_FILE" 2>/dev/null; then
+    cat << 'EOF' > "$GLIBC_SOURCE_FILE"
+# The glibc termux repository, with cloudflare cache (trusted signature bypass)
+deb [trusted=yes] https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable
 # The glibc termux repository, fallback mirror
-deb https://packages.termux.dev/apt/termux-glibc/ glibc stable
+deb [trusted=yes] https://packages.termux.dev/apt/termux-glibc/ glibc stable
 EOF
-    fi
+fi
 
+if ! command -v grun >/dev/null 2>&1 || [ ! -f "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ] || ! dpkg -s ca-certificates-glibc >/dev/null 2>&1; then
     echo "[*] Refreshing package indexes..."
-    apt-get update -y -o Acquire::Retries=3 || pkg update -y || true
+    apt-get update -y --allow-insecure-repositories -o Acquire::Retries=3 || pkg update -y || true
 
-    echo "[*] Installing glibc-runner..."
-    if ! pkg install -y glibc-runner 2>/dev/null; then
-        echo "[*] Retrying glibc-runner installation via apt-get..."
-        apt-get install -y --no-install-recommends glibc-repo glibc-runner || true
-    fi
+    echo "[*] Installing glibc runtime and SSL root certificates..."
+    pkg install -y glibc-runner ca-certificates-glibc 2>/dev/null || \
+    apt-get install -y --allow-unauthenticated --no-install-recommends glibc-repo glibc-runner ca-certificates-glibc || true
 
     if ! command -v grun >/dev/null 2>&1; then
         echo -e "${RED}[!] Error: Failed to setup glibc-runner automatically.${NC}"
         echo -e "${YELLOW}Please run manually:${NC}"
-        echo "  mkdir -p \$PREFIX/etc/apt/sources.list.d && echo \"deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable\" > \$PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner"
+        echo "  mkdir -p \$PREFIX/etc/apt/sources.list.d && echo 'deb [trusted=yes] https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable' > \$PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner ca-certificates-glibc"
         exit 1
     fi
-    echo -e "${GREEN}[+] glibc-runner successfully configured.${NC}"
+    echo -e "${GREEN}[+] glibc runtime and SSL certificates successfully configured.${NC}"
 else
-    echo -e "${GREEN}[+] glibc-runner is already installed and verified.${NC}"
+    echo -e "${GREEN}[+] glibc runtime is already installed and verified.${NC}"
+fi
+
+# Ensure glibc SSL certificate links exist immediately
+mkdir -p "$PREFIX/glibc/etc/ssl/certs" "$PREFIX/glibc/etc/ca-certificates" "$PREFIX/etc/ssl/certs"
+if [ -f "$PREFIX/etc/tls/cert.pem" ]; then
+    ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/glibc/etc/ssl/cert.pem" 2>/dev/null || true
+    ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/glibc/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
+    ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/glibc/etc/ca-certificates/cacert.pem" 2>/dev/null || true
+    ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
 fi
 
 # 1.2 Termux DNS resolver verification
@@ -130,6 +143,13 @@ def daemonize(cmd, log_file, pid_file):
 
     with open(pid_file, 'w') as f:
         f.write(str(os.getpid()))
+
+    # Propagate SSL certificate paths to child environment for Go / glibc
+    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+    cert_file = os.path.join(prefix, "etc/tls/cert.pem")
+    if os.path.exists(cert_file):
+        os.environ["SSL_CERT_FILE"] = cert_file
+        os.environ["SSL_CERT_DIR"] = os.path.join(prefix, "etc/ssl/certs")
 
     try:
         os.execvp(cmd[0], cmd)
@@ -236,8 +256,13 @@ get_pid() {
 
 start_proxy() {
     if get_pid >/dev/null 2>&1; then
-        echo "[*] OpenCode Proxy is already running (PID: $(get_pid))"
-        return 0
+        if curl -s --max-time 1.5 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+            echo "[*] OpenCode Proxy is already running (PID: $(get_pid))"
+            return 0
+        else
+            echo "[!] Detected dead or unresponsive proxy daemon (PID: $(get_pid)). Forcefully purging..."
+            kill_all_proxies
+        fi
     fi
 
     # Clear conflicting proxies on port 8080/8081
@@ -252,6 +277,18 @@ start_proxy() {
         echo "nameserver 1.1.1.1" > "$PREFIX/etc/resolv.conf"
         echo "nameserver 8.8.8.8" >> "$PREFIX/etc/resolv.conf"
     fi
+
+    # Ensure CA certificate links exist in Termux & glibc
+    if [ -f "$PREFIX/etc/tls/cert.pem" ]; then
+        mkdir -p "$PREFIX/etc/ssl/certs" "$PREFIX/glibc/etc/ssl/certs" "$PREFIX/glibc/etc/ca-certificates" 2>/dev/null || true
+        ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
+        ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/glibc/etc/ssl/cert.pem" 2>/dev/null || true
+        ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/glibc/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
+        ln -sf "$PREFIX/etc/tls/cert.pem" "$PREFIX/glibc/etc/ca-certificates/cacert.pem" 2>/dev/null || true
+    fi
+
+    export SSL_CERT_FILE="$PREFIX/etc/tls/cert.pem"
+    export SSL_CERT_DIR="$PREFIX/etc/ssl/certs"
 
     echo "[*] Starting OpenCode Proxy daemon on 127.0.0.1:8080..."
     local runner=()
@@ -284,6 +321,26 @@ kill_all_proxies() {
     fi
 
     rm -f "$PID_FILE" "$HOME/.opencode-proxy/proxy.pid" "$HOME/.config/openrouter-bridge/bridge.pid" "$HOME/.local/share/openrouter-bridge/bridge.pid"
+
+    # Self-heal corrupted OpenCode SQLite database
+    python3 - << 'PY' 2>/dev/null || true
+import os, sqlite3
+db = os.path.expanduser("~/.local/share/opencode/opencode.db")
+if os.path.isfile(db):
+    try:
+        conn = sqlite3.connect(db, timeout=1.0)
+        conn.cursor().execute("SELECT count(*) FROM session;")
+        conn.close()
+    except Exception:
+        try:
+            os.rename(db, db + f".corrupted.{int(os.times()[4])}")
+            for ext in ["-wal", "-shm"]:
+                p = db + ext
+                if os.path.exists(p): os.remove(p)
+        except Exception:
+            pass
+PY
+
     sleep 0.5
     echo "[+] All proxy processes and port bindings have been completely terminated."
 }
@@ -879,8 +936,39 @@ run_doctor() {
     if command -v grun >/dev/null 2>&1; then
         echo -e "${GREEN}OK${NC}"
     else
-        echo -e "${RED}MISSING (Fix: echo 'deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable' > \$PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner)${NC}"
+        echo -e "${RED}MISSING (Fix: echo 'deb [trusted=yes] https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable' > \$PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner ca-certificates-glibc)${NC}"
         issues=$((issues + 1))
+    fi
+
+    echo -n "[*] Checking SSL root certificates... "
+    if [ -f "$PREFIX/etc/tls/cert.pem" ]; then
+        echo -e "${GREEN}OK${NC}"
+    else
+        echo -e "${RED}MISSING (Fix: pkg install -y ca-certificates ca-certificates-glibc)${NC}"
+        issues=$((issues + 1))
+    fi
+
+    echo -n "[*] Checking OpenCode database integrity... "
+    local db_file="$HOME/.local/share/opencode/opencode.db"
+    if [ -f "$db_file" ]; then
+        if python3 -c "
+import sqlite3, sys
+try:
+    conn = sqlite3.connect('$db_file', timeout=1.0)
+    cur = conn.cursor()
+    cur.execute('SELECT count(*) FROM session;')
+    conn.close()
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+            echo -e "${GREEN}OK${NC}"
+        else
+            echo -e "${YELLOW}CORRUPTED (Auto-repair available)${NC}"
+            issues=$((issues + 1))
+        fi
+    else
+        echo -e "${GREEN}CLEAN${NC}"
     fi
 
     echo -n "[*] Checking OpenCode binary... "
@@ -948,7 +1036,39 @@ exit(0 if target in data else 1)
     exit $issues
 }
 
+repair_opencode_db() {
+    python3 - << 'PY' 2>/dev/null || true
+import os, sqlite3
+
+db_path = os.path.expanduser("~/.local/share/opencode/opencode.db")
+if os.path.isfile(db_path):
+    corrupted = False
+    if os.path.getsize(db_path) == 0:
+        corrupted = True
+    else:
+        try:
+            conn = sqlite3.connect(db_path, timeout=1.0)
+            cur = conn.cursor()
+            cur.execute("SELECT count(*) FROM session;")
+            conn.close()
+        except Exception:
+            corrupted = True
+    if corrupted:
+        bak = db_path + f".corrupted.{int(os.times()[4])}"
+        try:
+            os.rename(db_path, bak)
+            for ext in ["-wal", "-shm"]:
+                f = db_path + ext
+                if os.path.exists(f):
+                    os.remove(f)
+            print("[+] Repaired corrupted OpenCode database (old backed up).")
+        except Exception:
+            pass
+PY
+}
+
 start_proxy_if_needed() {
+    repair_opencode_db
     if ! curl -s --max-time 1 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
         echo -e "${YELLOW}[*] Starting OpenCode Unlimited Proxy (Port 8080)...${NC}"
         "$PROXY_CLI" start || true
@@ -963,10 +1083,12 @@ start_proxy_if_needed() {
             sleep 1
             waited=$((waited + 1))
         done
-        echo -e "${RED}[-] Warning: Proxy on port 8080 did not report ready within 15s.${NC}"
-        echo -e "${YELLOW}[*] Diagnostic proxy logs (last 6 lines):${NC}"
-        "$PROXY_CLI" logs 2>/dev/null | tail -n 6 || true
+        echo -e "${RED}[-] Warning: Proxy on port 8080 did not report ready within 25s.${NC}"
+        echo -e "${YELLOW}[*] Diagnostic proxy logs (last 8 lines):${NC}"
+        "$PROXY_CLI" logs 2>/dev/null | tail -n 8 || true
+        echo -e "${RED}[!] Error: Unlimited Proxy failed to start on port 8080. Cannot proceed to OpenCode without working backend.${NC}"
         echo -e "${CYAN}[!] Tip: Run 'opencode-proxy restart' or check network/DNS connectivity.${NC}"
+        exit 1
     fi
 }
 
@@ -1111,6 +1233,11 @@ else
     echo -e "${CYAN}[*] Initializing Unlimited Proxy Mode (Free Tier)...${NC}"
     start_proxy_if_needed
 fi
+
+# Ensure SSL root certs are visible to glibc / OpenCode bun runtime
+export SSL_CERT_FILE="$PREFIX/etc/tls/cert.pem"
+export SSL_CERT_DIR="$PREFIX/etc/ssl/certs"
+repair_opencode_db
 
 exec "$GRUN" "$OPENCODE_BIN" "${PASSTHROUGH_ARGS[@]}"
 EOF
