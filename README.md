@@ -207,6 +207,23 @@ curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlim
 
 ---
 
+## Uninstallation
+
+To cleanly remove all OpenCode binaries, proxies, and background daemons from Termux:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall.sh | bash
+```
+
+Or remove manually in one command:
+
+```bash
+pkill -9 -f opencode2api; pkill -9 -f openrouter-bridge; pkill -9 -f opencode-bin
+rm -rf ~/.opencode-proxy ~/.local/share/openrouter-bridge ~/.local/bin/opencode* ~/.local/bin/openrouter-bridge /data/data/com.termux/files/usr/bin/opencode
+```
+
+---
+
 ## Diagnostics & Troubleshooting
 
 Run the built-in system doctor anytime to diagnose potential issues:

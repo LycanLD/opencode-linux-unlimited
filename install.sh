@@ -1023,6 +1023,12 @@ if [ "$1" = "update" ] || [ "$1" = "--update" ]; then
     exit 0
 fi
 
+if [ "$1" = "uninstall" ] || [ "$1" = "--uninstall" ]; then
+    echo -e "${YELLOW}[*] Launching OpenCode uninstaller...${NC}"
+    curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall.sh | bash
+    exit 0
+fi
+
 MODE=""
 PASSTHROUGH_ARGS=()
 
