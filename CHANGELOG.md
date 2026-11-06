@@ -5,6 +5,14 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2026-11-06
+
+### Fixed
+- **Cloudflare WARP IPv6 Stack Lock (`"stack": "ipv6"`)**:
+  - Switches WARP pool egress from `dual` to `ipv6` by default. Under dual-stack, requests route via shared Cloudflare IPv4 NAT ranges (`104.28.x.x`), triggering global upstream `HTTP 429 Free usage limit reached` rate limits. Dedicated IPv6 unicast exits (`2a09:bac1:...` / `2a09:bac5:...`) bypass shared congestion with fresh per-IP quotas.
+- **SQLite 429 Session Lockout Auto-Inoculation**:
+  - Enhances `repair_opencode_db` to automatically detect and purge stuck session entries marked with `Free usage limit` from `~/.local/share/opencode/opencode.db`. Prevents the CLI from entering recursive 21-hour retry loops when restarting after a rate-limit event.
+
 ## [2.0.5] - 2026-11-04
 
 ### Fixed

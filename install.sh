@@ -177,7 +177,7 @@ cat << 'EOF' > "$INSTALL_DIR/config.json"
   "warp": {
     "enabled": true,
     "pool_size": 6,
-    "stack": "dual",
+    "stack": "ipv6",
     "source_ipv6": ""
   },
   "proxies": [
@@ -1050,6 +1050,14 @@ if os.path.isfile(db_path):
             conn = sqlite3.connect(db_path, timeout=1.0)
             cur = conn.cursor()
             cur.execute("SELECT count(*) FROM session;")
+            dead = [r[0] for r in cur.execute("SELECT DISTINCT session_id FROM message WHERE data LIKE '%Free usage limit%'").fetchall()]
+            for sid in dead:
+                cur.execute("DELETE FROM session WHERE id = ?;", (sid,))
+                cur.execute("DELETE FROM session_message WHERE session_id = ?;", (sid,))
+                cur.execute("DELETE FROM message WHERE session_id = ?;", (sid,))
+                cur.execute("DELETE FROM part WHERE session_id = ?;", (sid,))
+            if dead:
+                conn.commit()
             conn.close()
         except Exception:
             corrupted = True

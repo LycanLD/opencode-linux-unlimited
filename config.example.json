@@ -9,7 +9,7 @@
   "warp": {
     "enabled": true,
     "pool_size": 6,
-    "stack": "dual",
+    "stack": "ipv6",
     "source_ipv6": ""
   },
   "proxies": [
