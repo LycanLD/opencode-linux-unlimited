@@ -276,6 +276,22 @@ Example output:
    opencode-proxy status
    ```
 
+4. **"Could not find a PHDR: broken executable?" or `Aborted opencode`**:
+   This occurs when Android's Bionic dynamic linker (`/system/bin/linker64`) intercepts execution of OpenCode. This usually happens if:
+   - A user ran `npm install -g opencode` or `opencode upgrade`, which overwrites the launcher with a raw glibc binary that Android Bionic cannot parse.
+   - `opencode-bin` was corrupted or patched by `patchelf` / `grun -c`.
+   - The initial binary download was interrupted.
+
+   **Fix**: Run the built-in repair routine (or re-run `install.sh`):
+   ```bash
+   opencode repair
+   ```
+   Or manually:
+   ```bash
+   rm -f ~/.local/bin/opencode-bin
+   curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+   ```
+
 ---
 
 ## File Structure

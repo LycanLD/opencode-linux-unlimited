@@ -868,14 +868,32 @@ EOF
 chmod 600 "$BRIDGE_CONFIG_DIR/config.json"
 
 # 9. Download OpenCode CLI (v1.19.5 - Optimized monolithic build for Termux glibc-runner)
-if [ ! -f "$LOCAL_BIN/opencode-bin" ]; then
+BIN_VALID=false
+if [ -f "$LOCAL_BIN/opencode-bin" ]; then
+    BIN_SIZE=$(wc -c < "$LOCAL_BIN/opencode-bin" 2>/dev/null || echo 0)
+    if [ "$BIN_SIZE" -gt 50000000 ] && "$PREFIX/bin/grun" "$LOCAL_BIN/opencode-bin" --version >/dev/null 2>&1; then
+        BIN_VALID=true
+    else
+        echo -e "${YELLOW}[!] Existing opencode-bin is corrupted or incomplete (${BIN_SIZE} bytes). Re-downloading clean build...${NC}"
+        rm -f "$LOCAL_BIN/opencode-bin"
+    fi
+fi
+
+if [ "$BIN_VALID" != "true" ]; then
     echo "[*] Downloading OpenCode CLI binary (v1.19.5)..."
     TMP_CLI="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/opencode-cli.tgz"
-    curl -sSL "https://registry.npmjs.org/opencode-linux-arm64/-/opencode-linux-arm64-1.19.5.tgz" -o "$TMP_CLI"
+    curl -fL --retry 3 --retry-delay 2 "https://registry.npmjs.org/opencode-linux-arm64/-/opencode-linux-arm64-1.19.5.tgz" -o "$TMP_CLI"
     tar -zxvf "$TMP_CLI" -C "$LOCAL_BIN" --strip-components=2 package/bin/opencode
     mv "$LOCAL_BIN/opencode" "$LOCAL_BIN/opencode-bin"
     chmod +x "$LOCAL_BIN/opencode-bin"
     rm -f "$TMP_CLI"
+
+    # Preflight verification after download
+    if ! "$PREFIX/bin/grun" "$LOCAL_BIN/opencode-bin" --version >/dev/null 2>&1; then
+        echo -e "${RED}[!] Error: Downloaded opencode-bin failed execution under grun.${NC}"
+    else
+        echo -e "${GREEN}[+] OpenCode CLI binary verified and operational.${NC}"
+    fi
 
     # Apply GLM 5.3 Reasoning Unlock patch
     echo "[*] Applying GLM 5.3 reasoning capability patch..."
@@ -904,6 +922,8 @@ cat << 'EOF' > "$LOCAL_BIN/opencode"
 
 set -e
 
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+LOCAL_BIN="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/opencode"
 OPENROUTER_CONFIG="$HOME/.config/openrouter-bridge/config.json"
 BRIDGE_CLI="$HOME/.local/bin/openrouter-bridge"
@@ -973,7 +993,13 @@ except Exception:
 
     echo -n "[*] Checking OpenCode binary... "
     if [ -f "$OPENCODE_BIN" ]; then
-        echo -e "${GREEN}FOUND${NC}"
+        if "$GRUN" "$OPENCODE_BIN" --version >/dev/null 2>&1; then
+            VER=$("$GRUN" "$OPENCODE_BIN" --version 2>/dev/null | tr -d '\r\n')
+            echo -e "${GREEN}VALID (v$VER)${NC}"
+        else
+            echo -e "${RED}CORRUPTED / PHDR FAILURE (Run: opencode repair)${NC}"
+            issues=$((issues + 1))
+        fi
         echo -n "[*] Checking GLM 5.3 reasoning patch... "
         if python3 -c "
 with open('$OPENCODE_BIN', 'rb') as f:
@@ -987,6 +1013,26 @@ exit(0 if target in data else 1)
         fi
     else
         echo -e "${RED}MISSING ($OPENCODE_BIN)${NC}"
+        issues=$((issues + 1))
+    fi
+
+    echo -n "[*] Checking binary wrapper integrity ($PREFIX/bin/opencode)... "
+    if [ -L "$PREFIX/bin/opencode" ]; then
+        TARGET=$(readlink "$PREFIX/bin/opencode" 2>/dev/null || true)
+        if [ "$TARGET" = "$LOCAL_BIN/opencode" ]; then
+            echo -e "${GREEN}OK (Symlink -> $TARGET)${NC}"
+        else
+            echo -e "${YELLOW}REDIRECTED ($TARGET)${NC}"
+        fi
+    elif [ -f "$PREFIX/bin/opencode" ]; then
+        if head -c 4 "$PREFIX/bin/opencode" 2>/dev/null | grep -q "ELF"; then
+            echo -e "${RED}HIJACKED BY RAW ELF (npm/bun overwrite detected! Run: opencode repair)${NC}"
+            issues=$((issues + 1))
+        else
+            echo -e "${GREEN}OK (Wrapper script)${NC}"
+        fi
+    else
+        echo -e "${RED}MISSING${NC}"
         issues=$((issues + 1))
     fi
 
@@ -1159,8 +1205,17 @@ if [ "$1" = "doctor" ] || [ "$1" = "--doctor" ]; then
     run_doctor
 fi
 
-if [ "$1" = "update" ] || [ "$1" = "--update" ]; then
-    echo -e "${CYAN}[*] Fetching and applying latest OpenCode Termux Unlimited updates from GitHub...${NC}"
+if [ "$1" = "repair" ] || [ "$1" = "--repair" ]; then
+    echo -e "${CYAN}[*] Starting deep self-healing repair of OpenCode binary & glibc runtime...${NC}"
+    rm -f "$OPENCODE_BIN"
+    pkg install -y glibc-runner ca-certificates-glibc 2>/dev/null || true
+    curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+    exit 0
+fi
+
+if [ "$1" = "update" ] || [ "$1" = "--update" ] || [ "$1" = "upgrade" ] || [ "$1" = "--upgrade" ]; then
+    echo -e "${CYAN}[*] Safely updating OpenCode Termux Unlimited via installer pipeline...${NC}"
+    rm -f "$OPENCODE_BIN"
     curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
     exit 0
 fi
@@ -1247,16 +1302,30 @@ fi
 # Ensure SSL root certs are visible to glibc / OpenCode bun runtime
 export SSL_CERT_FILE="$PREFIX/etc/tls/cert.pem"
 export SSL_CERT_DIR="$PREFIX/etc/ssl/certs"
+export OPENCODE_DISABLE_AUTOUPDATE=true
 repair_opencode_db
+
+# Preflight check before exec to auto-heal corrupted binaries
+if ! "$GRUN" "$OPENCODE_BIN" --version >/dev/null 2>&1; then
+    echo -e "${YELLOW}[!] OpenCode binary is missing or corrupted (PHDR error). Running auto-recovery...${NC}"
+    rm -f "$OPENCODE_BIN"
+    TMP_CLI="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/opencode-cli.tgz"
+    curl -fL --retry 3 "https://registry.npmjs.org/opencode-linux-arm64/-/opencode-linux-arm64-1.19.5.tgz" -o "$TMP_CLI"
+    tar -zxvf "$TMP_CLI" -C "$LOCAL_BIN" --strip-components=2 package/bin/opencode
+    mv "$LOCAL_BIN/opencode" "$OPENCODE_BIN"
+    chmod +x "$OPENCODE_BIN"
+    rm -f "$TMP_CLI"
+    echo -e "${GREEN}[+] OpenCode binary restored successfully.${NC}"
+fi
 
 exec "$GRUN" "$OPENCODE_BIN" "${PASSTHROUGH_ARGS[@]}"
 EOF
 chmod +x "$LOCAL_BIN/opencode"
 
-# Clean legacy conflicting wrappers in $PREFIX/bin or system paths
-if [ -f "$PREFIX/bin/opencode" ] || [ -L "$PREFIX/bin/opencode" ]; then
-    if [ "$(realpath "$PREFIX/bin/opencode" 2>/dev/null)" != "$LOCAL_BIN/opencode" ]; then
-        echo "[*] Cleaning legacy conflicting wrapper at $PREFIX/bin/opencode..."
+# Clean legacy conflicting wrappers or npm-hijacked ELF binaries in $PREFIX/bin
+if [ -e "$PREFIX/bin/opencode" ] || [ -L "$PREFIX/bin/opencode" ]; then
+    if head -c 4 "$PREFIX/bin/opencode" 2>/dev/null | grep -q "ELF" || [ "$(realpath "$PREFIX/bin/opencode" 2>/dev/null)" != "$LOCAL_BIN/opencode" ]; then
+        echo "[*] Removing conflicting binary or stale symlink at $PREFIX/bin/opencode..."
         rm -f "$PREFIX/bin/opencode" 2>/dev/null || true
     fi
 fi
@@ -1270,6 +1339,7 @@ if [ ! -f "$CONFIG_DIR/opencode.jsonc" ]; then
     cat << 'EOF' > "$CONFIG_DIR/opencode.jsonc"
 {
   "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
   "model": "opencode-unlimited-proxy/deepseek-v4.1-flash-free",
   "permission": {
     "*": "allow",

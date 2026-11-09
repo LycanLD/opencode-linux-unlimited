@@ -5,6 +5,19 @@ All notable changes to `opencode-termux-unlimited` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.7] - 2026-11-09
+
+### Fixed
+- **Bionic Linker Crash & PHDR Error Defense (`Could not find a PHDR: broken executable?`)**:
+  - Implements binary size and execution preflight validation (>50MB, verified via `grun --version`) before skipping download, preventing broken/truncated binaries from persisting.
+  - Adds runtime preflight auto-recovery inside the launcher: detects corrupted or broken binaries on startup and automatically re-fetches a clean monolithic build without crashing.
+  - Guards `$PREFIX/bin/opencode` against npm/bun overwrites (e.g. `npm install -g opencode-ai` or `opencode upgrade`), stripping hijacked ELF binaries and restoring the managed wrapper symlink.
+  - Automatically exports `OPENCODE_DISABLE_AUTOUPDATE=true` and sets `"autoupdate": false` in `opencode.jsonc` to block background update routines that pull unpatched glibc binaries.
+- **Added `opencode repair` & Safe `opencode upgrade` Routing**:
+  - Adds `opencode repair` subcommand for one-shot environment restoration (reinstalls `glibc-runner`, purges corrupted binary, re-runs full verification).
+  - Routes `opencode upgrade` / `opencode update` safely through `install.sh` pipeline instead of raw npm.
+  - Adds wrapper integrity verification to `opencode doctor`.
+
 ## [2.0.6] - 2026-11-06
 
 ### Fixed
