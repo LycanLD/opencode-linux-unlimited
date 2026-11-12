@@ -1,6 +1,8 @@
-# opencode-termux-unlimited
+# opencode-unlimited
 
-Production-ready OpenCode CLI runtime environment for Android (Termux aarch64), featuring a multi-mode gateway architecture with unlimited free models, automated Cloudflare WARP egress pooling, and an integrated OpenRouter bridge.
+Production-ready OpenCode CLI runtime with a multi-mode gateway architecture: unlimited free models, automated Cloudflare WARP egress pooling, and an integrated OpenRouter bridge.
+
+Originally built for Android (Termux aarch64) and now available for **native Linux** (glibc, x86_64 and aarch64) with automatic package-manager detection for Arch, Debian/Ubuntu, Fedora/RHEL, and openSUSE.
 
 ---
 
@@ -32,19 +34,66 @@ Production-ready OpenCode CLI runtime environment for Android (Termux aarch64), 
 
 ---
 
+## Platform Support
+
+| Platform | Installer | Status |
+| :--- | :--- | :--- |
+| Arch Linux and derivatives (Manjaro, EndeavourOS) | `install-linux.sh` | Supported (`pacman`) |
+| Debian / Ubuntu and derivatives (Mint, Pop!_OS, Kali) | `install-linux.sh` | Supported (`apt`) |
+| Fedora / RHEL and derivatives (Rocky, Alma, CentOS Stream) | `install-linux.sh` | Supported (`dnf` / `yum`) |
+| openSUSE / SLES | `install-linux.sh` | Supported (`zypper`) |
+| Alpine and other musl distros | `install-linux.sh` | Best-effort (`apk` + `gcompat`) |
+| Android / Termux (aarch64) | `install.sh` | Supported |
+
+Linux installs are user-space only: everything lives under `$HOME` (`~/.local/bin`, `~/.opencode-proxy`, `~/.config`, `~/.local/share`, `~/.local/state`). `sudo` is used only to install missing system packages.
+
+- **Architectures**: `x86_64` / `amd64` and `aarch64` / `arm64`. Check with `uname -m`.
+
+---
+
 ## Features
 
 - **Multi-Mode Interactive Launcher**:
-  - **Mode 1 (Unlimited Free Proxy)**: Zero-config access to unlimited free models via local Cloudflare WARP egress pool. No API key required.
+  - **Mode 1 (Unlimited Free Proxy)**: Zero-config access to unlimited free models via a local Cloudflare WARP egress pool. No API key required.
   - **Mode 2 (Dual Gateway)**: Runs both the Unlimited Proxy and the dedicated OpenRouter Bridge, allowing simultaneous usage of free models and frontier models (Claude 3.7 Sonnet, GPT-4o, DeepSeek R1/V3) with your own OpenRouter key.
-- **GLM 5.3 Reasoning Unlock**: Fixes an upstream OpenCode catalog whitelist bug via an automated 1:1 byte patch to `opencode-bin`, restoring full reasoning effort selection (`low`, `medium`, `high`, `max`) for `glm-5.3-flash-free`.
+- **GLM 5.3 Reasoning Unlock**: Fixes an upstream OpenCode catalog whitelist bug via an automated 1:1 byte patch to the OpenCode binary, restoring full reasoning effort selection (`low`, `medium`, `high`, `max`) for `glm-5.3-flash-free`.
 - **WARP Pool Egress Scaling**: Configured with 6 Cloudflare WARP workers (`preload: 3`, `active: 3`, `standby: 3`) to prevent 429 rate limits under high concurrency.
 - **Integrated OpenRouter Autonomous Bridge**: Pure Python 3 standard library daemon with smart multi-egress probing (Wireproxy WARP -> Smart-Proxy -> Direct) and clean HTTP/1.1 SSE streaming.
 - **System Doctor & Self-Healing Diagnostics**: Built-in `opencode doctor` command that inspects binary architecture, daemon health, port availability, DNS latency, and configuration validity.
+- **Cross-Distro Package Handling**: Detects `pacman`, `apt`, `dnf`, `yum`, `zypper`, or `apk` and installs the right dependency names automatically (`python3` vs `python`, `procps` vs `procps-ng`, etc.).
 
 ---
 
 ## Prerequisites
+
+### Linux
+
+The installer auto-detects your package manager and installs anything missing (using `sudo` when not running as root):
+
+- `curl`, `jq`, `python3`, `tar`, `gzip`
+- `lsof` (or `fuser`)
+- `procps` (`pgrep` / `pkill`)
+- `ca-certificates` (SSL roots for WARP/OpenRouter)
+
+If you prefer to install them first:
+
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y curl jq python3 tar gzip lsof procps ca-certificates
+
+# Fedora / RHEL
+sudo dnf install -y curl jq python3 tar gzip lsof procps-ng ca-certificates
+
+# Arch Linux
+sudo pacman -S --needed curl jq python tar gzip lsof procps-ng ca-certificates
+
+# openSUSE
+sudo zypper install curl jq python3 tar gzip lsof procps ca-certificates
+```
+
+> **Alpine / musl**: the prebuilt OpenCode CLI is glibc-linked. The installer pulls `gcompat` + `libstdc++`, but musl support is best-effort. A glibc-based distro is recommended.
+
+### Termux
 
 - **Device**: Android phone or tablet running Termux.
 - **Architecture**: `aarch64` / `arm64`. Check with `uname -m`.
@@ -54,13 +103,35 @@ Production-ready OpenCode CLI runtime environment for Android (Termux aarch64), 
 
 ## Quickstart Installation
 
-Run the one-line installer inside Termux:
+### Linux
+
+```bash
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install-linux.sh | bash
+```
+
+Or download and inspect it first:
+
+```bash
+curl -sSLO https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install-linux.sh
+less install-linux.sh
+bash install-linux.sh
+```
+
+Once installed, restart your shell or reload PATH:
+
+```bash
+source ~/.bashrc    # or ~/.zshrc, ~/.profile, or: exec $SHELL
+```
+
+The installer adds `~/.local/bin` to `.bashrc`, `.bash_profile`, `.zshrc`, `.profile`, and (if present) the Fish config.
+
+### Termux
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
 ```
 
-Once installed, restart your shell or reload PATH:
+Then:
 
 ```bash
 source ~/.bashrc
@@ -69,16 +140,16 @@ source ~/.bashrc
 ---
 
 > [!WARNING]
-> ### Do Not Manually Update the OpenCode Binary (`v2.x` Incompatibility)
-> 
+> ### Do Not Manually Update the OpenCode Binary
+>
 > Do **not** run `npm update -g opencode`, `npm install -g opencode`, or manually replace `~/.local/bin/opencode-bin` with newer upstream releases (such as `v2.2.5+`).
-> 
+>
 > **Why?**
 > - **Client-Server Daemon Collision**: OpenCode v2.0+ decoupled into a client-server model where the CLI spawns a child background daemon via `execve(process.execPath, ["serve"])`.
 > - **Android Bionic Linker Crash (Exit Code 127)**: In Termux, child processes spawned via `execve` bypass the parent shell wrapper (`grun`). The Android kernel rejects the binary because the standard glibc dynamic linker (`/lib/ld-linux-aarch64.so.1`) does not exist in Android's root filesystem, causing the server process to immediately crash with exit code `127`.
 > - **Bun Asset Trailer Corruption (Exit Code 139)**: Attempting to modify the binary using `patchelf --set-interpreter` corrupts Bun's embedded executable trailer, leading to an immediate `Segmentation fault (core dumped)`.
-> 
-> The bundled OpenCode **v1.19.5** build runs entirely in-process under `glibc-runner` (`grun`), ensuring maximum performance, zero sub-process crashes, and seamless proxy routing. Only upgrade OpenCode if you are running inside a full PRoot Linux distribution (e.g., Debian/Ubuntu PRoot) where `/lib` is natively mounted.
+>
+> The bundled OpenCode **v1.19.5** build is pinned (and patched for GLM 5.3 reasoning) on both Linux and Termux. Use `opencode update` / `opencode repair` instead of updating the binary directly.
 
 ---
 
@@ -96,7 +167,7 @@ When run interactively without flags, OpenCode prompts you to choose your operat
 
 ```text
 ================================================================
-           OpenCode Termux Launcher - Select Mode               
+            OpenCode Linux Launcher - Select Mode
 ================================================================
 
   [1] Unlimited Proxy Mode (Default / 100% Free)
@@ -111,7 +182,7 @@ When run interactively without flags, OpenCode prompts you to choose your operat
         Claude 3.7 Sonnet, GPT-4o, DeepSeek R1/V3, Gemini 2.5 Pro.
       • Requires your own OpenRouter API key.
 ================================================================
-Select option [1/2] (Default is 1): 
+Select option [1/2] (Default is 1):
 ```
 
 ### 2. Direct Mode Flags (Bypass Menu)
@@ -130,7 +201,7 @@ opencode -1 models
 opencode -2 -m anthropic/claude-3.7-sonnet
 ```
 
-You can also export `OPENCODE_MODE=1` or `OPENCODE_MODE=2` in your `~/.bashrc` to set a permanent default.
+You can also export `OPENCODE_MODE=1` or `OPENCODE_MODE=2` in your shell profile to set a permanent default.
 
 ---
 
@@ -153,7 +224,7 @@ All models are served through the local proxy at `http://127.0.0.1:8080/v1`:
 
 ### Adjusting GLM 5.3 Thinking / Effort
 
-With our binary patch and config variants, you can adjust GLM 5.3 reasoning depth directly inside the OpenCode TUI:
+With the binary patch and config variants, you can adjust GLM 5.3 reasoning depth directly inside the OpenCode TUI:
 - Use the `/variants` slash command to pick `low`, `medium`, `high`, or `max`.
 - Or press `Tab` on the model statusline to cycle through effort levels.
 
@@ -175,7 +246,7 @@ opencode-proxy test      # Send test request to DeepSeek V4.1
 opencode-proxy logs      # View last 35 lines of proxy log
 ```
 
-Web dashboard is accessible at `http://127.0.0.1:8081` (Default credentials: `admin` / `changeme-changeme`).
+Web dashboard is accessible at `http://127.0.0.1:8081` (default credentials: `admin` / `changeme-changeme`).
 
 ### OpenRouter Bridge (Port 8085)
 
@@ -200,9 +271,13 @@ To pull the latest runtime fixes, proxy patches, and improvements directly from 
 opencode update
 ```
 
-Alternatively, re-run the one-line installer anytime (existing binary downloads and configuration settings are automatically preserved):
+Alternatively, re-run the platform installer anytime (existing configuration settings are preserved):
 
 ```bash
+# Linux
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install-linux.sh | bash
+
+# Termux
 curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
 ```
 
@@ -210,17 +285,31 @@ curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlim
 
 ## Uninstallation
 
-To cleanly remove all OpenCode binaries, proxies, and background daemons from Termux:
+### Linux
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall.sh | bash
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall-linux.sh | bash
 ```
 
-Or remove manually in one command:
+Or from the installed launcher:
+
+```bash
+opencode uninstall
+```
+
+Manual removal:
 
 ```bash
 pkill -9 -f opencode2api; pkill -9 -f openrouter-bridge; pkill -9 -f opencode-bin
-rm -rf ~/.opencode-proxy ~/.local/share/openrouter-bridge ~/.local/bin/opencode* ~/.local/bin/openrouter-bridge /data/data/com.termux/files/usr/bin/opencode
+rm -rf ~/.opencode-proxy ~/.local/share/openrouter-bridge ~/.local/state/openrouter-bridge \
+       ~/.local/bin/opencode ~/.local/bin/opencode-bin ~/.local/bin/opencode-proxy \
+       ~/.local/bin/openrouter-bridge /usr/local/bin/opencode
+```
+
+### Termux
+
+```bash
+curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall.sh | bash
 ```
 
 ---
@@ -233,64 +322,76 @@ Run the built-in system doctor anytime to diagnose potential issues:
 opencode doctor
 ```
 
-Example output:
+Example output (Linux):
 
 ```text
-=== OpenCode Termux System Diagnostics (Doctor) ===
+=== OpenCode Linux System Diagnostics (Doctor) ===
 
-[*] Checking system architecture... OK (aarch64)
-[*] Checking glibc-runner (grun)... OK
-[*] Checking OpenCode binary... FOUND
+[*] Checking system architecture... OK (x86_64)
+[*] Checking core utilities (curl/jq/python3)... OK
+[*] Checking SSL root certificates... OK (/etc/ssl/certs/ca-certificates.crt)
+[*] Checking OpenCode database integrity... OK
+[*] Checking OpenCode binary... VALID (v1.19.5)
 [*] Checking GLM 5.3 reasoning patch... ACTIVE (Unlocked)
+[*] Checking launcher/wrapper integrity... OK (Wrapper script)
 [*] Checking Unlimited Proxy (127.0.0.1:8080)... RUNNING (WARP: ready, Models: 10)
 [*] Checking OpenRouter Bridge (127.0.0.1:8085)... RUNNING (Egress: direct)
 [*] Checking DNS resolution (1.1.1.1)... OK
-[*] Validating ~/.config/opencode/opencode.jsonc... VALID
+[*] Validating opencode.jsonc... VALID
+[*] Validating opencode-unlimited.jsonc... VALID
 
 [✓] All core systems operational.
 ```
 
 ### Common Fixes
 
-1. **DNS Resolution Hangs**:
-   If DNS fails when switching between Wi-Fi and mobile data, update your nameserver:
+1. **Missing packages on Debian/Ubuntu**:
+   If the installer could not install prerequisites (for example `sudo` is unavailable), install them manually and re-run:
    ```bash
-   echo "nameserver 1.1.1.1" > /data/data/com.termux/files/usr/etc/resolv.conf
-   echo "nameserver 8.8.8.8" >> /data/data/com.termux/files/usr/etc/resolv.conf
+   sudo apt update && sudo apt install -y curl jq python3 tar gzip lsof procps ca-certificates
    ```
 
-2. **Glibc Interpreter Missing or `Unable to locate package glibc-repo`**:
-   If Termux mirrors fail to locate `glibc-repo` or report missing `ld-linux-aarch64.so.1`, initialize the glibc repository list directly and install `glibc-runner`:
+2. **`opencode: command not found` after install**:
+   `~/.local/bin` is not on your `PATH` in the current shell. Reload your profile or open a new terminal:
    ```bash
-   mkdir -p $PREFIX/etc/apt/sources.list.d && echo "deb https://packages-cf.termux.dev/apt/termux-glibc/ glibc stable" > $PREFIX/etc/apt/sources.list.d/glibc.list && apt update && pkg install -y glibc-runner
+   source ~/.profile    # or ~/.bashrc / ~/.zshrc
+   export PATH="$HOME/.local/bin:$PATH"
    ```
 
-3. **Cannot Connect to API (`ECONNREFUSED`)**:
-   If OpenCode reports `ECONNREFUSED` when sending prompts, the local unlimited proxy daemon on port 8080 is stopped or DNS resolution failed:
+3. **DNS Resolution Hangs**:
+   If DNS fails when switching networks, check your resolver:
    ```bash
-   # Ensure DNS nameservers exist
-   echo "nameserver 1.1.1.1" > /data/data/com.termux/files/usr/etc/resolv.conf
-   # Restart proxy daemon
+   cat /etc/resolv.conf
+   # Optionally use public resolvers (systemd-resolved or your network manager may override this):
+   # nameserver 1.1.1.1
+   # nameserver 8.8.8.8
+   ```
+   On Termux only, edit `$PREFIX/etc/resolv.conf` instead.
+
+4. **Cannot Connect to API (`ECONNREFUSED`)**:
+   The local unlimited proxy on port 8080 is stopped or DNS resolution failed:
+   ```bash
    opencode-proxy restart
-   # Verify health status
    opencode-proxy status
    ```
 
-4. **"Could not find a PHDR: broken executable?" or `Aborted opencode`**:
-   This occurs when Android's Bionic dynamic linker (`/system/bin/linker64`) intercepts execution of OpenCode. This usually happens if:
-   - A user ran `npm install -g opencode` or `opencode upgrade`, which overwrites the launcher with a raw glibc binary that Android Bionic cannot parse.
-   - `opencode-bin` was corrupted or patched by `patchelf` / `grun -c`.
-   - The initial binary download was interrupted.
-
-   **Fix**: Run the built-in repair routine (or re-run `install.sh`):
+5. **"Could not find a PHDR: broken executable?" or `Aborted opencode` (Termux) / corrupted binary (any platform)**:
+   This indicates the OpenCode binary was overwritten or truncated. Run the repair routine:
    ```bash
    opencode repair
    ```
-   Or manually:
+   Or remove and reinstall:
    ```bash
    rm -f ~/.local/bin/opencode-bin
-   curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+   # then re-run the installer for your platform
    ```
+
+6. **Alpine / musl errors (`not found` or dynamic linker errors)**:
+   The prebuilt OpenCode CLI expects glibc. Install the compatibility layer:
+   ```bash
+   sudo apk add gcompat libstdc++
+   ```
+   If it still fails, use a glibc-based distribution (Debian/Ubuntu, Fedora, Arch, openSUSE).
 
 ---
 
@@ -306,15 +407,25 @@ Example output:
 ~/.local/share/openrouter-bridge/
 └── bridge.py          # Lightweight Python 3 stdlib bridge gateway
 
+~/.local/state/openrouter-bridge/
+├── bridge.log         # Bridge access logs
+└── bridge.pid         # Bridge PID file
+
 ~/.opencode-proxy/
-├── bin/opencode2api   # Compiled ARM64 proxy engine
+├── bin/opencode2api   # Compiled proxy engine (amd64 / arm64)
 ├── daemon_spawn.py    # Double-fork background spawner
 ├── config.json        # Proxy configuration (WARP pool size 6)
 └── proxy.log          # Operational proxy logs
 
 ~/.config/opencode/
-└── opencode.jsonc     # OpenCode models and provider configuration
+├── opencode.jsonc             # OpenCode models and provider configuration
+└── opencode-unlimited.jsonc   # Additive profile layered over your own config
+
+~/.config/openrouter-bridge/
+└── config.json        # Bridge configuration (egress list, API key)
 ```
+
+On Termux, binaries live in `$PREFIX/bin` instead of `~/.local/bin`, and `opencode-bin` runs through `glibc-runner` (`grun`).
 
 ---
 
