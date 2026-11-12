@@ -1,8 +1,8 @@
-# opencode-unlimited
+# opencode-linux-unlimited
 
-Production-ready OpenCode CLI runtime with a multi-mode gateway architecture: unlimited free models, automated Cloudflare WARP egress pooling, and an integrated OpenRouter bridge.
+Production-ready OpenCode CLI runtime for Linux with a multi-mode gateway architecture: unlimited free models, automated Cloudflare WARP egress pooling, and an integrated OpenRouter bridge.
 
-Originally built for Android (Termux aarch64) and now available for **native Linux** (glibc, x86_64 and aarch64) with automatic package-manager detection for Arch, Debian/Ubuntu, Fedora/RHEL, and openSUSE.
+Supports `x86_64` and `aarch64` with automatic package-manager detection for Arch, Debian/Ubuntu, Fedora/RHEL, and openSUSE.
 
 ---
 
@@ -36,18 +36,16 @@ Originally built for Android (Termux aarch64) and now available for **native Lin
 
 ## Platform Support
 
-| Platform | Installer | Status |
+| Platform | Package Manager | Status |
 | :--- | :--- | :--- |
-| Arch Linux and derivatives (Manjaro, EndeavourOS) | `install-linux.sh` | Supported (`pacman`) |
-| Debian / Ubuntu and derivatives (Mint, Pop!_OS, Kali) | `install-linux.sh` | Supported (`apt`) |
-| Fedora / RHEL and derivatives (Rocky, Alma, CentOS Stream) | `install-linux.sh` | Supported (`dnf` / `yum`) |
-| openSUSE / SLES | `install-linux.sh` | Supported (`zypper`) |
-| Alpine and other musl distros | `install-linux.sh` | Best-effort (`apk` + `gcompat`) |
-| Android / Termux (aarch64) | `install.sh` | Supported |
-
-Linux installs are user-space only: everything lives under `$HOME` (`~/.local/bin`, `~/.opencode-proxy`, `~/.config`, `~/.local/share`, `~/.local/state`). `sudo` is used only to install missing system packages.
+| Arch Linux and derivatives (Manjaro, EndeavourOS) | `pacman` | Supported |
+| Debian / Ubuntu and derivatives (Mint, Pop!_OS, Kali) | `apt` | Supported |
+| Fedora / RHEL and derivatives (Rocky, Alma, CentOS Stream) | `dnf` / `yum` | Supported |
+| openSUSE / SLES | `zypper` | Supported |
+| Alpine and other musl distros | `apk` + `gcompat` | Best-effort |
 
 - **Architectures**: `x86_64` / `amd64` and `aarch64` / `arm64`. Check with `uname -m`.
+- **User-space install**: everything lives under `$HOME` (`~/.local/bin`, `~/.opencode-proxy`, `~/.config`, `~/.local/share`, `~/.local/state`). `sudo` is used only to install missing system packages.
 
 ---
 
@@ -65,8 +63,6 @@ Linux installs are user-space only: everything lives under `$HOME` (`~/.local/bi
 ---
 
 ## Prerequisites
-
-### Linux
 
 The installer auto-detects your package manager and installs anything missing (using `sudo` when not running as root):
 
@@ -93,26 +89,44 @@ sudo zypper install curl jq python3 tar gzip lsof procps ca-certificates
 
 > **Alpine / musl**: the prebuilt OpenCode CLI is glibc-linked. The installer pulls `gcompat` + `libstdc++`, but musl support is best-effort. A glibc-based distro is recommended.
 
-### Termux
-
-- **Device**: Android phone or tablet running Termux.
-- **Architecture**: `aarch64` / `arm64`. Check with `uname -m`.
-- **Packages**: `curl`, `jq`, `proot`, `termux-tools`, `python`, `glibc-repo`, `glibc-runner`. Installed automatically by the script.
-
 ---
 
 ## Quickstart Installation
 
-### Linux
+### One-line installer (recommended)
+
+The bootstrap script clones this repository and runs the full installer:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install-linux.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main/online-install.sh)
 ```
 
-Or download and inspect it first:
+Or, if you prefer piping into bash:
 
 ```bash
-curl -sSLO https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install-linux.sh
+curl -fsSL https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main/online-install.sh | bash
+```
+
+For a private repository, export a token with `repo` scope first:
+
+```bash
+GITHUB_TOKEN=ghp_xxx bash <(curl -fsSL https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main/online-install.sh)
+```
+
+### Direct installer
+
+If you already cloned the repository (or want to inspect the script before running it):
+
+```bash
+git clone https://github.com/LycanLD/opencode-linux-unlimited.git
+cd opencode-linux-unlimited
+bash install-linux.sh
+```
+
+Or fetch just the installer:
+
+```bash
+curl -sSLO https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main/install-linux.sh
 less install-linux.sh
 bash install-linux.sh
 ```
@@ -125,18 +139,6 @@ source ~/.bashrc    # or ~/.zshrc, ~/.profile, or: exec $SHELL
 
 The installer adds `~/.local/bin` to `.bashrc`, `.bash_profile`, `.zshrc`, `.profile`, and (if present) the Fish config.
 
-### Termux
-
-```bash
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
-```
-
-Then:
-
-```bash
-source ~/.bashrc
-```
-
 ---
 
 > [!WARNING]
@@ -146,10 +148,9 @@ source ~/.bashrc
 >
 > **Why?**
 > - **Client-Server Daemon Collision**: OpenCode v2.0+ decoupled into a client-server model where the CLI spawns a child background daemon via `execve(process.execPath, ["serve"])`.
-> - **Android Bionic Linker Crash (Exit Code 127)**: In Termux, child processes spawned via `execve` bypass the parent shell wrapper (`grun`). The Android kernel rejects the binary because the standard glibc dynamic linker (`/lib/ld-linux-aarch64.so.1`) does not exist in Android's root filesystem, causing the server process to immediately crash with exit code `127`.
-> - **Bun Asset Trailer Corruption (Exit Code 139)**: Attempting to modify the binary using `patchelf --set-interpreter` corrupts Bun's embedded executable trailer, leading to an immediate `Segmentation fault (core dumped)`.
+> - **Broken Pinned Build**: The bundled OpenCode **v1.19.5** is pinned and patched for GLM 5.3 reasoning support. Upstream updates can overwrite the launcher and break proxy routing.
 >
-> The bundled OpenCode **v1.19.5** build is pinned (and patched for GLM 5.3 reasoning) on both Linux and Termux. Use `opencode update` / `opencode repair` instead of updating the binary directly.
+> Use `opencode update` / `opencode repair` instead of updating the binary directly.
 
 ---
 
@@ -271,24 +272,18 @@ To pull the latest runtime fixes, proxy patches, and improvements directly from 
 opencode update
 ```
 
-Alternatively, re-run the platform installer anytime (existing configuration settings are preserved):
+Alternatively, re-run the bootstrap installer anytime (existing configuration settings are preserved):
 
 ```bash
-# Linux
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install-linux.sh | bash
-
-# Termux
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/install.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main/online-install.sh)
 ```
 
 ---
 
 ## Uninstallation
 
-### Linux
-
 ```bash
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall-linux.sh | bash
+curl -sSL https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main/uninstall-linux.sh | bash
 ```
 
 Or from the installed launcher:
@@ -306,12 +301,6 @@ rm -rf ~/.opencode-proxy ~/.local/share/openrouter-bridge ~/.local/state/openrou
        ~/.local/bin/openrouter-bridge /usr/local/bin/opencode
 ```
 
-### Termux
-
-```bash
-curl -sSL https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main/uninstall.sh | bash
-```
-
 ---
 
 ## Diagnostics & Troubleshooting
@@ -322,7 +311,7 @@ Run the built-in system doctor anytime to diagnose potential issues:
 opencode doctor
 ```
 
-Example output (Linux):
+Example output:
 
 ```text
 === OpenCode Linux System Diagnostics (Doctor) ===
@@ -366,7 +355,6 @@ Example output (Linux):
    # nameserver 1.1.1.1
    # nameserver 8.8.8.8
    ```
-   On Termux only, edit `$PREFIX/etc/resolv.conf` instead.
 
 4. **Cannot Connect to API (`ECONNREFUSED`)**:
    The local unlimited proxy on port 8080 is stopped or DNS resolution failed:
@@ -375,15 +363,15 @@ Example output (Linux):
    opencode-proxy status
    ```
 
-5. **"Could not find a PHDR: broken executable?" or `Aborted opencode` (Termux) / corrupted binary (any platform)**:
-   This indicates the OpenCode binary was overwritten or truncated. Run the repair routine:
+5. **Corrupted OpenCode binary (`Could not find a PHDR`, `Aborted opencode`, etc.)**:
+   Run the repair routine:
    ```bash
    opencode repair
    ```
    Or remove and reinstall:
    ```bash
    rm -f ~/.local/bin/opencode-bin
-   # then re-run the installer for your platform
+   # then re-run the bootstrap installer
    ```
 
 6. **Alpine / musl errors (`not found` or dynamic linker errors)**:
@@ -415,7 +403,9 @@ Example output (Linux):
 ├── bin/opencode2api   # Compiled proxy engine (amd64 / arm64)
 ├── daemon_spawn.py    # Double-fork background spawner
 ├── config.json        # Proxy configuration (WARP pool size 6)
-└── proxy.log          # Operational proxy logs
+├── proxy.log          # Operational proxy logs
+├── install-linux.sh   # Cached installer (enables offline update/repair)
+└── uninstall-linux.sh # Cached uninstaller (enables offline uninstall)
 
 ~/.config/opencode/
 ├── opencode.jsonc             # OpenCode models and provider configuration
@@ -425,13 +415,23 @@ Example output (Linux):
 └── config.json        # Bridge configuration (egress list, API key)
 ```
 
-On Termux, binaries live in `$PREFIX/bin` instead of `~/.local/bin`, and `opencode-bin` runs through `glibc-runner` (`grun`).
+---
+
+## Repository Layout
+
+```text
+install-linux.sh      # Direct cross-distro installer
+online-install.sh     # One-line bootstrap (clone + install)
+uninstall-linux.sh    # Clean uninstaller
+config.example.json   # Proxy configuration reference
+opencode.example.jsonc# OpenCode provider configuration reference
+```
 
 ---
 
 ## Credits
 
-- Maintained by [leangtg123-art](https://github.com/leangtg123-art).
+- Maintained by [LycanLD](https://github.com/LycanLD).
 - Architectural design, reverse-engineering, and enhancements contributed by Discord user **leanianstudio**.
 - Powered by [OpenCode](https://opencode.ai) and `opencode2api`.
 

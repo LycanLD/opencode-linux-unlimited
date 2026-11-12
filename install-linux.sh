@@ -9,8 +9,8 @@
 #   - openSUSE / SLES                   (zypper)
 #   - Alpine and other musl systems     (apk, best-effort via gcompat)
 #
-# Ported from opencode-termux-unlimited for native Linux (no glibc-runner,
-# no PRoot, no Termux prefix). Installs entirely into the user's home directory.
+# Native Linux installer: no glibc-runner, no PRoot, no emulation layers.
+# Installs entirely into the user's home directory.
 
 set -e
 
@@ -25,7 +25,7 @@ NC='\033[0m'
 echo -e "${CYAN}${BOLD}=== OpenCode Unlimited Linux Installer ===${NC}"
 
 # Allow overriding the upstream repo used by `opencode update` / `opencode repair`.
-REPO_RAW="${OPENCODE_REPO_RAW:-https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main}"
+REPO_RAW="${OPENCODE_REPO_RAW:-https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main}"
 INSTALL_SCRIPT_URL="$REPO_RAW/install-linux.sh"
 UNINSTALL_SCRIPT_URL="$REPO_RAW/uninstall-linux.sh"
 
@@ -37,7 +37,6 @@ OPENCODE_CLI_VER="1.19.5"
 # ---------------------------------------------------------------------------
 if [ "$(uname -s)" != "Linux" ]; then
     echo -e "${RED}[!] Error: This installer targets Linux (detected: $(uname -s)).${NC}"
-    echo -e "${YELLOW}    On Android/Termux use install.sh instead.${NC}"
     exit 1
 fi
 
@@ -218,10 +217,16 @@ BRIDGE_STATE_DIR="$HOME/.local/state/openrouter-bridge"
 
 mkdir -p "$BIN_DIR" "$LOCAL_BIN" "$CONFIG_DIR" "$BRIDGE_DIR" "$BRIDGE_CONFIG_DIR" "$BRIDGE_STATE_DIR"
 
-# Persist a copy of this installer so `opencode update`/`opencode repair` work offline.
+# Persist copies of the installer scripts so `opencode update`/`opencode repair`
+# and `opencode uninstall` work offline.
 if [ -f "$0" ] && [ "$(basename "$0")" != "bash" ] && [ "$(basename "$0")" != "sh" ]; then
+    SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)
     cp -f "$0" "$INSTALL_DIR/install-linux.sh" 2>/dev/null || true
     chmod +x "$INSTALL_DIR/install-linux.sh" 2>/dev/null || true
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/uninstall-linux.sh" ]; then
+        cp -f "$SCRIPT_DIR/uninstall-linux.sh" "$INSTALL_DIR/uninstall-linux.sh" 2>/dev/null || true
+        chmod +x "$INSTALL_DIR/uninstall-linux.sh" 2>/dev/null || true
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -1050,7 +1055,7 @@ BRIDGE_CLI="$HOME/.local/bin/openrouter-bridge"
 PROXY_CLI="$HOME/.local/bin/opencode-proxy"
 OPENCODE_BIN="$HOME/.local/bin/opencode-bin"
 INSTALL_DIR="$HOME/.opencode-proxy"
-REPO_RAW="${OPENCODE_REPO_RAW:-https://raw.githubusercontent.com/leangtg123-art/opencode-termux-unlimited/main}"
+REPO_RAW="${OPENCODE_REPO_RAW:-https://raw.githubusercontent.com/LycanLD/opencode-linux-unlimited/main}"
 INSTALL_SCRIPT_URL="${OPENCODE_INSTALL_URL:-$REPO_RAW/install-linux.sh}"
 UNINSTALL_SCRIPT_URL="${OPENCODE_UNINSTALL_URL:-$REPO_RAW/uninstall-linux.sh}"
 
